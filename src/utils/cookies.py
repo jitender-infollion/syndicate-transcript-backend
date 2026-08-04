@@ -1,7 +1,7 @@
 from fastapi import Response
 
 REFRESH_COOKIE_NAME = "refresh_token"
-GUEST_CART_COOKIE_NAME = "guest_cart_id"
+GUEST_CART_COOKIE_NAME = "guest_id"
 
 
 def set_refresh_cookie(response: Response, token: str, secure: bool, max_age_days: int) -> None:

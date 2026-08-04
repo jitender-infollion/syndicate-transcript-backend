@@ -132,8 +132,17 @@ def handle_clear_cart(user_id: int | None, guest_id: str | None) -> CartResponse
 def handle_merge_cart(user_id: int, guest_id: str | None, item_ids: list[int]) -> CartResponse:
     session = get_session()
     try:
-        user_cart = _get_cart(session, user_id, None, create=True)
+        user_cart = _get_cart(session, user_id, None, create=False)
         guest_cart = _get_cart(session, None, guest_id, create=False) if guest_id else None
+
+        if user_cart is None and guest_cart is not None:
+            # No cart of their own yet - re-point the guest cart at the user instead of
+            # copying rows into a freshly created one (keeps this a single UPDATE).
+            guest_cart.user_id = user_id
+            guest_cart.guest_id = None
+            guest_cart.expires_at = None
+            user_cart = guest_cart
+            guest_cart = None
 
         candidate_ids = set(item_ids or [])
         if guest_cart is not None:
@@ -143,6 +152,8 @@ def handle_merge_cart(user_id: int, guest_id: str | None, item_ids: list[int]) -
             }
 
         if candidate_ids:
+            if user_cart is None:
+                user_cart = _get_cart(session, user_id, None, create=True)
             valid_ids = {
                 row[0]
                 for row in session.query(Transcript.id)
@@ -157,10 +168,10 @@ def handle_merge_cart(user_id: int, guest_id: str | None, item_ids: list[int]) -
                 session.add(CartItem(cart_id=user_cart.id, transcript_id=transcript_id))
 
         if guest_cart is not None:
-            guest_cart.status = CartStatus.CONVERTED.value
+            session.delete(guest_cart)
 
         session.commit()
-        return _cart_response(session, user_cart)
+        return _cart_response(session, user_cart) if user_cart is not None else CartResponse(items=[])
     except Exception:
         session.rollback()
         logger.exception("Failed to merge cart")

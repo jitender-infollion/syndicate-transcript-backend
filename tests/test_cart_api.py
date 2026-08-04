@@ -1,11 +1,12 @@
 from test_transcripts_api import _auth_headers, _seed_author, _seed_transcript, _signup_and_verify
+from utils.cookies import GUEST_CART_COOKIE_NAME
 
 
 def test_get_empty_cart_for_new_guest(client):
     resp = client.get("/api/cart")
     assert resp.status_code == 200, resp.text
     assert resp.json()["data"]["items"] == []
-    assert "guest_cart_id" in resp.cookies
+    assert GUEST_CART_COOKIE_NAME in resp.cookies
 
 
 def test_add_item_to_guest_cart_then_fetch(client, engine):
@@ -81,7 +82,7 @@ def test_add_item_as_authenticated_user_lands_in_user_cart(client, monkeypatch, 
     assert resp.status_code == 200, resp.text
     assert [i["id"] for i in resp.json()["data"]["items"]] == [transcript_id]
     # No guest cookie should be involved for an authenticated request.
-    assert "guest_cart_id" not in resp.cookies
+    assert GUEST_CART_COOKIE_NAME not in resp.cookies
 
     get_resp = client.get("/api/cart", headers=_auth_headers(token))
     assert [i["id"] for i in get_resp.json()["data"]["items"]] == [transcript_id]
@@ -97,9 +98,9 @@ def test_merge_combines_guest_and_body_items_into_user_cart(client, monkeypatch,
     guest_item_id = _seed_transcript(engine, author_id, topic="Guest item")
     body_item_id = _seed_transcript(engine, author_id, topic="Body item")
 
-    # Shop as a guest first - this sets the guest_cart_id cookie on `client`.
+    # Shop as a guest first - this sets the guest cart cookie on `client`.
     add_resp = client.post("/api/cart/items", json={"transcriptId": guest_item_id})
-    assert "guest_cart_id" in add_resp.cookies
+    assert GUEST_CART_COOKIE_NAME in add_resp.cookies
 
     # Now register/verify using the SAME client, so the guest cookie is still attached.
     token, _ = _signup_and_verify(client, monkeypatch)
@@ -112,7 +113,7 @@ def test_merge_combines_guest_and_body_items_into_user_cart(client, monkeypatch,
     assert merged_ids == {guest_item_id, body_item_id}
 
     # Guest cookie should be cleared after a successful merge.
-    assert merge_resp.cookies.get("guest_cart_id") is None
+    assert merge_resp.cookies.get(GUEST_CART_COOKIE_NAME) is None
 
 
 def test_merge_dedupes_against_existing_user_cart_item(client, monkeypatch, engine):
