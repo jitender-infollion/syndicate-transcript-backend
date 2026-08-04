@@ -2,14 +2,19 @@ from .auth_handler import (
     handle_forgot_password,
     handle_login,
     handle_logout,
+    handle_refresh,
     handle_register,
     handle_resend_otp,
     handle_reset_password,
+    handle_send_login_otp,
+    handle_verify_login_otp,
     handle_verify_registration_otp,
 )
 from .auth_schema import (
     AuthResponse,
     ForgotPasswordRequest,
+    LoginOtpSendRequest,
+    LoginOtpVerifyRequest,
     LoginRequest,
     PendingAuthResponse,
     RegisterRequest,
@@ -25,17 +30,30 @@ def register(data: RegisterRequest) -> PendingAuthResponse:
     return handle_register(data)
 
 
-def verify_registration_otp(data: VerifyOtpRequest) -> AuthResponse:
+def verify_registration_otp(
+    data: VerifyOtpRequest, device_info: str | None, ip_address: str | None
+) -> tuple[AuthResponse, str]:
     validate_otp_format(data.otp)
-    return handle_verify_registration_otp(data.pendingToken, data.otp)
+    return handle_verify_registration_otp(data.tempToken, data.otp, device_info, ip_address)
 
 
 def resend_otp(data: ResendOtpRequest) -> PendingAuthResponse:
-    return handle_resend_otp(data.pendingToken)
+    return handle_resend_otp(data.tempToken)
 
 
-def login(data: LoginRequest) -> AuthResponse:
-    return handle_login(data.email, data.password)
+def login(data: LoginRequest, device_info: str | None, ip_address: str | None) -> tuple[AuthResponse, str]:
+    return handle_login(data.email, data.password, device_info, ip_address)
+
+
+def send_login_otp(data: LoginOtpSendRequest) -> PendingAuthResponse:
+    return handle_send_login_otp(data.email)
+
+
+def verify_login_otp(
+    data: LoginOtpVerifyRequest, device_info: str | None, ip_address: str | None
+) -> tuple[AuthResponse, str]:
+    validate_otp_format(data.otp)
+    return handle_verify_login_otp(data.tempToken, data.otp, device_info, ip_address)
 
 
 def forgot_password(data: ForgotPasswordRequest) -> None:
@@ -47,5 +65,9 @@ def reset_password(data: ResetPasswordRequest) -> None:
     handle_reset_password(data.token, data.password)
 
 
-def logout(user_id: int) -> None:
-    handle_logout(user_id)
+def refresh(raw_token: str, device_info: str | None, ip_address: str | None) -> tuple[AuthResponse, str]:
+    return handle_refresh(raw_token, device_info, ip_address)
+
+
+def logout(raw_refresh_token: str | None) -> None:
+    handle_logout(raw_refresh_token)

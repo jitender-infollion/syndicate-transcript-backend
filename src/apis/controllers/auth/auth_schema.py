@@ -9,21 +9,30 @@ class RegisterRequest(BaseModel):
 
 
 class PendingAuthResponse(BaseModel):
-    pendingToken: str
+    tempToken: str
 
 
 class VerifyOtpRequest(BaseModel):
-    pendingToken: str
+    tempToken: str
     otp: str
 
 
 class ResendOtpRequest(BaseModel):
-    pendingToken: str
+    tempToken: str
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class LoginOtpSendRequest(BaseModel):
+    email: EmailStr
+
+
+class LoginOtpVerifyRequest(BaseModel):
+    tempToken: str
+    otp: str
 
 
 class ForgotPasswordRequest(BaseModel):

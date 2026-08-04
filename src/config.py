@@ -28,7 +28,12 @@ class DatabaseConfig:
 @dataclass
 class AuthConfig:
     jwt_secret: str
-    jwt_expiry_hours: int
+    access_token_expiry_minutes: int
+    refresh_token_expiry_days: int
+    # Cookies aren't sent over plain http without this off - set false for
+    # local http dev only; SameSite falls back to "lax" when insecure since
+    # browsers reject SameSite=None without Secure.
+    cookie_secure: bool
     # Additional signing secrets this service will also accept on incoming
     # Bearer tokens (e.g. tokens issued by the main Infollion platform during
     # the SSO handoff). No live integration exists yet; this is a structural
@@ -57,11 +62,38 @@ class EmailConfig:
 
 
 @dataclass
+class SecretsConfig:
+    # email_encryption_key: Fernet key encrypting users.email_encrypted at rest.
+    # email_hash_secret: HMAC pepper for users.email_hash (deterministic lookup hash).
+    # otp_hash_secret: HMAC pepper for users.otp_hash - a 6-digit code has too little
+    # entropy to hash unkeyed (a stolen DB dump could brute-force all 1M values offline
+    # in an instant without this secret).
+    email_encryption_key: str
+    email_hash_secret: str
+    otp_hash_secret: str
+
+
+@dataclass
+class SigningServiceConfig:
+    # Separate backend service that signs S3 (Linode Object Storage) URLs for
+    # transcript view/download. Endpoint path and auth header format are not
+    # finalized yet - both default empty as placeholders.
+    base_url: str
+    api_key: str
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.base_url and self.api_key)
+
+
+@dataclass
 class Settings:
     database: DatabaseConfig
     auth: AuthConfig
     services: ServicesConfig
     email: EmailConfig
+    secrets: SecretsConfig
+    signing_service: SigningServiceConfig
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -79,7 +111,9 @@ class Settings:
             ),
             auth=AuthConfig(
                 jwt_secret=get_env("JWT_SECRET"),
-                jwt_expiry_hours=int(get_env("JWT_EXPIRY_HOURS", default="24", required=False)),
+                access_token_expiry_minutes=int(get_env("ACCESS_TOKEN_EXPIRY_MINUTES", default="15", required=False)),
+                refresh_token_expiry_days=int(get_env("REFRESH_TOKEN_EXPIRY_DAYS", default="30", required=False)),
+                cookie_secure=get_bool_env("COOKIE_SECURE", default=True),
                 trusted_jwt_secrets=trusted_secrets,
             ),
             services=ServicesConfig(
@@ -93,6 +127,15 @@ class Settings:
                 smtp_password=get_env("SMTP_PASS", default="", required=False),
                 from_email=get_env("SMTP_FROM", default="", required=False),
                 use_tls=get_bool_env("SMTP_USE_TLS", default=True),
+            ),
+            secrets=SecretsConfig(
+                email_encryption_key=get_env("EMAIL_ENCRYPTION_KEY"),
+                email_hash_secret=get_env("EMAIL_HASH_SECRET"),
+                otp_hash_secret=get_env("OTP_HASH_SECRET"),
+            ),
+            signing_service=SigningServiceConfig(
+                base_url=get_env("SIGNING_SERVICE_URL", default="", required=False),
+                api_key=get_env("SIGNING_SERVICE_API_KEY", default="", required=False),
             ),
         )
 

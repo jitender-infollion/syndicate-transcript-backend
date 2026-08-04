@@ -11,7 +11,9 @@ load_dotenv()
 _TEST_DB_ENV = "TRANSCRIPT_TEST_DATABASE_URL"
 _TEST_ENV = {
     "JWT_SECRET": "test-jwt-secret",
-    "JWT_EXPIRY_HOURS": "24",
+    "ACCESS_TOKEN_EXPIRY_MINUTES": "15",
+    "REFRESH_TOKEN_EXPIRY_DAYS": "30",
+    "COOKIE_SECURE": "false",
     "JWT_TRUSTED_SECRETS": "",
     "CORS_ALLOWED_ORIGINS": "http://localhost:5173",
     "FRONTEND_BASE_URL": "http://localhost:5173",
@@ -29,8 +31,8 @@ def _warn_if_shared_with_dev(url: str) -> None:
     if dev_url and url == dev_url:
         print(
             f"\nWARNING: {_TEST_DB_ENV} is the same database as DATABASE_URL. "
-            "Every test run TRUNCATEs users/otp, erasing all real accounts in this "
-            "database. Proceeding because this was an explicit choice.\n",
+            "Every test run TRUNCATEs sessions/entitlements/cart_items/carts/transcripts/authors/users, erasing all "
+            "real data in this database. Proceeding because this was an explicit choice.\n",
             file=sys.stderr,
         )
 
@@ -68,7 +70,12 @@ def _clean_tables(request):
     if "engine" in request.fixturenames:
         eng = request.getfixturevalue("engine")
         with eng.begin() as conn:
-            conn.execute(text("TRUNCATE otp, users RESTART IDENTITY CASCADE"))
+            conn.execute(
+                text(
+                    "TRUNCATE sessions, entitlements, cart_items, carts, transcripts, authors, users "
+                    "RESTART IDENTITY CASCADE"
+                )
+            )
     yield
 
 

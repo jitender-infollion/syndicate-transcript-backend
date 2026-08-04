@@ -1,13 +1,33 @@
 import logging
 import smtplib
 from email.message import EmailMessage
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+_jinja_env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=select_autoescape(["html"]))
 
-def _send_email(to_email: str, subject: str, body: str) -> None:
+OTP_TTL_MINUTES = 10
+
+
+def _render_otp_email(title: str, heading: str, description: str, otp: str) -> str:
+    return _jinja_env.get_template("otp_code.html").render(
+        title=title,
+        render_logo=False,
+        logo_url=None,
+        heading=heading,
+        description=description,
+        code=otp,
+        ttl_minutes=OTP_TTL_MINUTES,
+    )
+
+
+def _send_email(to_email: str, subject: str, body: str, html: str | None = None) -> None:
     email_config = get_settings().email
     if not email_config.is_configured:
         logger.warning("SMTP is not configured; logging email instead of sending. To: %s | %s", to_email, body)
@@ -18,6 +38,8 @@ def _send_email(to_email: str, subject: str, body: str) -> None:
     message["From"] = email_config.from_email
     message["To"] = to_email
     message.set_content(body)
+    if html:
+        message.add_alternative(html, subtype="html")
 
     try:
         if email_config.use_tls:
@@ -35,10 +57,32 @@ def _send_email(to_email: str, subject: str, body: str) -> None:
 
 
 def send_registration_otp(email: str, otp: str) -> None:
+    html = _render_otp_email(
+        title="Your Infollion verification code",
+        heading="Verify your email",
+        description="Enter this code to verify your email and finish creating your account:",
+        otp=otp,
+    )
     _send_email(
         to_email=email,
         subject="Your verification code",
-        body=f"Your OTP is {otp}. It expires in 10 minutes.",
+        body=f"Your OTP is {otp}. It expires in {OTP_TTL_MINUTES} minutes.",
+        html=html,
+    )
+
+
+def send_login_otp(email: str, otp: str) -> None:
+    html = _render_otp_email(
+        title="Your Infollion login code",
+        heading="Your login code",
+        description="Enter this code to log in to Infollion:",
+        otp=otp,
+    )
+    _send_email(
+        to_email=email,
+        subject="Your login code",
+        body=f"Your login OTP is {otp}. It expires in {OTP_TTL_MINUTES} minutes.",
+        html=html,
     )
 
 

@@ -6,10 +6,10 @@ from jose import JWTError, jwt
 from config import get_settings
 
 JWT_ALGORITHM = "HS256"
-PASSWORD_RESET_PURPOSE = "password_reset"
-PASSWORD_RESET_EXPIRY_MINUTES = 30
 PENDING_VERIFICATION_PURPOSE = "email_verification"
 PENDING_VERIFICATION_EXPIRY_MINUTES = 15
+OTP_LOGIN_PURPOSE = "otp_login"
+OTP_LOGIN_EXPIRY_MINUTES = 10
 
 
 def hash_password(password: str) -> str:
@@ -30,7 +30,7 @@ def create_access_token(*, user_id: int, user_name: str, email: str) -> str:
         "user_name": user_name,
         "email": email,
         "iat": now,
-        "exp": now + timedelta(hours=settings.auth.jwt_expiry_hours),
+        "exp": now + timedelta(minutes=settings.auth.access_token_expiry_minutes),
     }
     return jwt.encode(payload, settings.auth.jwt_secret, algorithm=JWT_ALGORITHM)
 
@@ -48,30 +48,6 @@ def decode_access_token(token: str) -> dict | None:
         except JWTError:
             continue
     return None
-
-
-def create_password_reset_token(user_id: int) -> str:
-    settings = get_settings()
-    now = datetime.now(timezone.utc)
-    payload = {
-        "purpose": PASSWORD_RESET_PURPOSE,
-        "user_id": str(user_id),
-        "iat": now,
-        "exp": now + timedelta(minutes=PASSWORD_RESET_EXPIRY_MINUTES),
-    }
-    return jwt.encode(payload, settings.auth.jwt_secret, algorithm=JWT_ALGORITHM)
-
-
-def decode_password_reset_token(token: str) -> int | None:
-    settings = get_settings()
-    try:
-        payload = jwt.decode(token, settings.auth.jwt_secret, algorithms=[JWT_ALGORITHM])
-    except JWTError:
-        return None
-    if payload.get("purpose") != PASSWORD_RESET_PURPOSE:
-        return None
-    user_id = payload.get("user_id")
-    return int(user_id) if user_id else None
 
 
 def create_pending_verification_token(user_id: int) -> str:
@@ -97,6 +73,34 @@ def decode_pending_verification_token(token: str) -> int | None:
     except JWTError:
         return None
     if payload.get("purpose") != PENDING_VERIFICATION_PURPOSE:
+        return None
+    user_id = payload.get("user_id")
+    return int(user_id) if user_id else None
+
+
+def create_otp_login_token(user_id: int) -> str:
+    """A short-lived token identifying who an OTP-login OTP was issued to.
+    Uses its own purpose (distinct from PENDING_VERIFICATION_PURPOSE) so it
+    can't be replayed against the email-verification endpoints, which skip
+    OTP checks entirely for already-verified users."""
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "purpose": OTP_LOGIN_PURPOSE,
+        "user_id": str(user_id),
+        "iat": now,
+        "exp": now + timedelta(minutes=OTP_LOGIN_EXPIRY_MINUTES),
+    }
+    return jwt.encode(payload, settings.auth.jwt_secret, algorithm=JWT_ALGORITHM)
+
+
+def decode_otp_login_token(token: str) -> int | None:
+    settings = get_settings()
+    try:
+        payload = jwt.decode(token, settings.auth.jwt_secret, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("purpose") != OTP_LOGIN_PURPOSE:
         return None
     user_id = payload.get("user_id")
     return int(user_id) if user_id else None

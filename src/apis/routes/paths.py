@@ -1,5 +1,7 @@
 _AUTH = "/api/auth"
 _USERS = "/api/users"
+_TRANSCRIPTS = "/api/transcripts"
+_CART = "/api/cart"
 
 
 class P:
@@ -9,6 +11,9 @@ class P:
         REGISTER_VERIFY_OTP = "/register/verify-otp"
         REGISTER_RESEND_OTP = "/register/resend-otp"
         LOGIN = "/login"
+        LOGIN_OTP_SEND = "/login/otp/send"
+        LOGIN_OTP_VERIFY = "/login/otp/verify"
+        REFRESH = "/refresh"
         LOGOUT = "/logout"
         FORGOT_PASSWORD = "/forgot-password"
         RESET_PASSWORD = "/reset-password"
@@ -16,3 +21,20 @@ class P:
     class users:
         BASE = _USERS
         ME = "/me"
+
+    class transcripts:
+        BASE = _TRANSCRIPTS
+        LIST = ""
+        FILTER = "/filter"
+        MY_PURCHASED = "/me/purchased"
+        DOMAINS = "/domains"
+        DETAIL = "/{transcript_id}"
+        VIEW = "/{transcript_id}/view"
+        DOWNLOAD = "/{transcript_id}/download"
+
+    class cart:
+        BASE = _CART
+        ROOT = ""
+        ITEMS = "/items"
+        ITEM_DETAIL = "/items/{transcript_id}"
+        MERGE = "/merge"
