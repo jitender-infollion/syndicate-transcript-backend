@@ -50,10 +50,18 @@ class TranscriptAccessResponse(BaseModel):
     url: str
 
 
+class TranscriptFullTextResponse(BaseModel):
+    fullText: str
+
+
 class TranscriptFilterRequest(BaseModel):
     domain: list[str] | None = None
     geography: list[str] | None = None
     topic: str | None = None
+    # Free-text search across topic, preview, domain, and geography - what
+    # the main search bar sends, as opposed to `topic`'s narrower exact-field
+    # match (used by structured/programmatic filtering).
+    search: str | None = None
     authorId: int | None = None
     minPrice: int | None = None
     maxPrice: int | None = None

@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>{{ title }}</title>
+</head>
+
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#1a1a1a;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:32px 12px;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%; max-width:560px; background-color:#ffffff; border-radius:18px; overflow:hidden; border:1px solid #e6e8eb;">
+                    <tr>
+                        <td align="center" style="padding:34px 40px 10px 40px;">
+                            <img src="{{ logo_url }}" alt="Infollion" style="height:44px; display:block; margin:0 auto 22px auto; max-width:180px; object-fit:contain;">
+                            <h1 style="margin:0; font-size:24px; line-height:30px; font-weight:700; color:#111827;">Payment successful</h1>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding:10px 40px 8px 40px;">
+                            <p style="margin:0; font-size:16px; line-height:24px; color:#4b5563;">
+                                {% if name %}Hi {{ name }},{% else %}Hi,{% endif %} thanks for your purchase. Your receipt
+                                (<strong>{{ invoice_number }}</strong>) is attached to this email as a PDF.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding:24px 40px 34px 40px;">
+                            <p style="margin:0; font-size:14px; line-height:24px; color:#4b5563;">
+                                You can also view your purchases anytime from your Infollion account.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding:20px 40px; border-top:1px solid #e6e8eb; background-color:#fafbfc;">
+                            <p style="margin:0; font-size:12px; line-height:20px; color:#9ca3af;">
+                                This is an automated receipt from Infollion.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+
+</html>

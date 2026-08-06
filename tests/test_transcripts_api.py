@@ -183,7 +183,7 @@ def test_view_and_download_require_purchase(client, monkeypatch, engine):
 # commented out pending that backend being ready (see the TODO in
 # transcripts_handler.py). Once uncommented, restore this test to assert a
 # 200 + the mocked signed url, like before.
-def test_view_and_download_return_not_implemented_after_purchase(client, monkeypatch, engine):
+def test_view_still_not_implemented_after_purchase(client, monkeypatch, engine):
     token, user_id = _signup_and_verify(client, monkeypatch)
     author_id = _seed_author(engine)
     transcript_id = _seed_transcript(engine, author_id)
@@ -192,8 +192,35 @@ def test_view_and_download_return_not_implemented_after_purchase(client, monkeyp
     resp = client.get(f"/api/transcripts/{transcript_id}/view", headers=_auth_headers(token))
     assert resp.status_code == 501
 
+
+def test_full_text_and_download_work_after_purchase(client, monkeypatch, engine):
+    token, user_id = _signup_and_verify(client, monkeypatch)
+    author_id = _seed_author(engine)
+    transcript_id = _seed_transcript(engine, author_id)
+    _grant_entitlement(engine, user_id, transcript_id)
+
+    full_text_resp = client.get(f"/api/transcripts/{transcript_id}/full-text", headers=_auth_headers(token))
+    assert full_text_resp.status_code == 200, full_text_resp.text
+    full_text = full_text_resp.json()["data"]["fullText"]
+    assert "Enterprise AI Integration" in full_text  # default _seed_transcript topic
+
+    # No signing service configured in tests -> dev-mode placeholder PDF, not a redirect.
+    download_resp = client.get(f"/api/transcripts/{transcript_id}/download", headers=_auth_headers(token))
+    assert download_resp.status_code == 200, download_resp.text
+    assert download_resp.headers["content-type"] == "application/pdf"
+    assert download_resp.content[:4] == b"%PDF"
+
+
+def test_full_text_and_download_require_purchase(client, monkeypatch, engine):
+    token, _ = _signup_and_verify(client, monkeypatch)
+    author_id = _seed_author(engine)
+    transcript_id = _seed_transcript(engine, author_id)
+
+    resp = client.get(f"/api/transcripts/{transcript_id}/full-text", headers=_auth_headers(token))
+    assert resp.status_code == 403
+
     resp = client.get(f"/api/transcripts/{transcript_id}/download", headers=_auth_headers(token))
-    assert resp.status_code == 501
+    assert resp.status_code == 403
 
 
 def test_domain_filter_matches_via_array_containment(client, engine):
@@ -273,6 +300,25 @@ def test_filter_by_topic_substring_case_insensitive(client, engine):
     body = resp.json()["data"]
     assert body["meta"]["total"] == 1
     assert body["items"][0]["id"] == match_id
+
+
+def test_filter_by_search_matches_topic_or_geography(client, engine):
+    author_id = _seed_author(engine)
+    topic_match_id = _seed_transcript(engine, author_id, topic="Cloud cost optimization", geography=["Europe"])
+    geography_match_id = _seed_transcript(engine, author_id, topic="Unrelated topic", geography=["APAC"])
+    _seed_transcript(engine, author_id, topic="Something else", geography=["South Asia"])
+
+    resp = client.post("/api/transcripts/filter", json={"search": "cloud"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()["data"]
+    assert body["meta"]["total"] == 1
+    assert body["items"][0]["id"] == topic_match_id
+
+    resp = client.post("/api/transcripts/filter", json={"search": "APAC"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()["data"]
+    assert body["meta"]["total"] == 1
+    assert body["items"][0]["id"] == geography_match_id
 
 
 def test_filter_by_price_range(client, engine):

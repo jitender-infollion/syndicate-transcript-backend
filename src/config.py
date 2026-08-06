@@ -87,6 +87,20 @@ class SigningServiceConfig:
 
 
 @dataclass
+class PaymentConfig:
+    # Razorpay test-mode keys aren't provisioned yet - all default empty until
+    # they're added to .env. See services/payment/core.py.
+    razorpay_key_id: str
+    razorpay_key_secret: str
+    razorpay_webhook_secret: str
+    currency: str
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.razorpay_key_id and self.razorpay_key_secret and self.razorpay_webhook_secret)
+
+
+@dataclass
 class Settings:
     database: DatabaseConfig
     auth: AuthConfig
@@ -94,6 +108,7 @@ class Settings:
     email: EmailConfig
     secrets: SecretsConfig
     signing_service: SigningServiceConfig
+    payment: PaymentConfig
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -136,6 +151,12 @@ class Settings:
             signing_service=SigningServiceConfig(
                 base_url=get_env("SIGNING_SERVICE_URL", default="", required=False),
                 api_key=get_env("SIGNING_SERVICE_API_KEY", default="", required=False),
+            ),
+            payment=PaymentConfig(
+                razorpay_key_id=get_env("RAZORPAY_KEY_ID", default="", required=False),
+                razorpay_key_secret=get_env("RAZORPAY_KEY_SECRET", default="", required=False),
+                razorpay_webhook_secret=get_env("RAZORPAY_WEBHOOK_SECRET", default="", required=False),
+                currency=get_env("PAYMENT_CURRENCY", default="USD", required=False),
             ),
         )
 

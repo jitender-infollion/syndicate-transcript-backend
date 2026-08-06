@@ -16,10 +16,11 @@ OTP_TTL_MINUTES = 10
 
 
 def _render_otp_email(title: str, heading: str, description: str, otp: str) -> str:
+    frontend_base_url = get_settings().services.frontend_base_url
     return _jinja_env.get_template("otp_code.html").render(
         title=title,
-        render_logo=False,
-        logo_url=None,
+        render_logo=True,
+        logo_url=f"{frontend_base_url}/assets/infollion_logo_200x100.png",
         heading=heading,
         description=description,
         code=otp,
@@ -27,7 +28,14 @@ def _render_otp_email(title: str, heading: str, description: str, otp: str) -> s
     )
 
 
-def _send_email(to_email: str, subject: str, body: str, html: str | None = None) -> None:
+def _send_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    html: str | None = None,
+    attachment_bytes: bytes | None = None,
+    attachment_filename: str | None = None,
+) -> None:
     email_config = get_settings().email
     if not email_config.is_configured:
         logger.warning("SMTP is not configured; logging email instead of sending. To: %s | %s", to_email, body)
@@ -40,6 +48,8 @@ def _send_email(to_email: str, subject: str, body: str, html: str | None = None)
     message.set_content(body)
     if html:
         message.add_alternative(html, subtype="html")
+    if attachment_bytes and attachment_filename:
+        message.add_attachment(attachment_bytes, maintype="application", subtype="pdf", filename=attachment_filename)
 
     try:
         if email_config.use_tls:
@@ -91,4 +101,22 @@ def send_password_reset_link(email: str, reset_link: str) -> None:
         to_email=email,
         subject="Reset your password",
         body=f"Click the link below to reset your password:\n\n{reset_link}",
+    )
+
+
+def send_invoice_email(email: str, name: str | None, invoice_number: str, pdf_bytes: bytes) -> None:
+    frontend_base_url = get_settings().services.frontend_base_url
+    html = _jinja_env.get_template("invoice_email.html").render(
+        title="Your Infollion receipt",
+        logo_url=f"{frontend_base_url}/assets/infollion_logo_200x100.png",
+        name=name,
+        invoice_number=invoice_number,
+    )
+    _send_email(
+        to_email=email,
+        subject=f"Your Infollion receipt - {invoice_number}",
+        body=f"Thanks for your purchase! Your receipt ({invoice_number}) is attached.",
+        html=html,
+        attachment_bytes=pdf_bytes,
+        attachment_filename=f"{invoice_number}.pdf",
     )

@@ -2,6 +2,7 @@ _AUTH = "/api/auth"
 _USERS = "/api/users"
 _TRANSCRIPTS = "/api/transcripts"
 _CART = "/api/cart"
+_ORDERS = "/api/orders"
 
 
 class P:
@@ -31,6 +32,7 @@ class P:
         DETAIL = "/{transcript_id}"
         VIEW = "/{transcript_id}/view"
         DOWNLOAD = "/{transcript_id}/download"
+        FULL_TEXT = "/{transcript_id}/full-text"
 
     class cart:
         BASE = _CART
@@ -38,3 +40,11 @@ class P:
         ITEMS = "/items"
         ITEM_DETAIL = "/items/{transcript_id}"
         MERGE = "/merge"
+
+    class orders:
+        BASE = _ORDERS
+        ROOT = ""
+        VERIFY = "/verify"
+        DETAIL = "/{order_id}"
+        RECEIPT = "/{order_id}/receipt"
+        WEBHOOK = "/webhook/{gateway}"

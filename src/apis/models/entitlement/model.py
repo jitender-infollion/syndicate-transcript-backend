@@ -18,9 +18,8 @@ class Entitlement(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     transcript_id = Column(Integer, ForeignKey("transcripts.id"), nullable=False)
-    # No FK constraint yet - order_items doesn't exist (future orders/payments
-    # epic). Nullable because admin_grant entitlements have no order item.
-    order_item_id = Column(Integer, nullable=True)
+    # Nullable because admin_grant entitlements have no order item.
+    order_item_id = Column(Integer, ForeignKey("order_items.id"), nullable=True)
     status = Column(
         String, nullable=False, default=EntitlementStatus.ACTIVE.value, server_default=EntitlementStatus.ACTIVE.value
     )

@@ -1,14 +1,17 @@
 import logging
+from dataclasses import dataclass
 from typing import Literal
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import String, cast, func, or_
 
 from apis.models.author import Author
 from apis.models.entitlement import Entitlement, EntitlementStatus
 from apis.models.transcript import Transcript
+from config import get_settings
 from services.database.postgres.connection import get_session
 from services.storage.signing_client import get_signed_url
+from services.transcript_pdf import generate_transcript_pdf
 from utils.pagination import Page, PaginationParams, build_page, paginate
 
 from .transcripts_schema import (
@@ -17,6 +20,7 @@ from .transcripts_schema import (
     TranscriptAccessResponse,
     TranscriptDetailResponse,
     TranscriptFilterRequest,
+    TranscriptFullTextResponse,
     TranscriptListItem,
 )
 
@@ -139,6 +143,16 @@ def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
             query = query.filter(Transcript.geography.overlap(filters.geography))
         if filters.topic:
             query = query.filter(Transcript.topic.ilike(f"%{filters.topic}%"))
+        if filters.search:
+            term = f"%{filters.search}%"
+            query = query.filter(
+                or_(
+                    Transcript.topic.ilike(term),
+                    Transcript.preview.ilike(term),
+                    cast(Transcript.domain, String).ilike(term),
+                    cast(Transcript.geography, String).ilike(term),
+                )
+            )
         if filters.authorId is not None:
             query = query.filter(Transcript.author_id == filters.authorId)
         if filters.minPrice is not None:
@@ -251,6 +265,96 @@ def handle_get_transcript_access(
         raise
     except Exception:
         logger.exception("Failed to generate %s link for transcript", mode)
+        raise HTTPException(status_code=500, detail="Internal error") from None
+    finally:
+        session.close()
+
+
+def _build_dev_full_text(transcript: Transcript) -> str:
+    """Assembled from fields that actually exist (preview/key_insight) - there's
+    no real extracted transcript body stored anywhere yet. Replace this with a
+    real full-text source once one exists; callers only depend on getting a
+    non-empty string back, not on how it was produced.
+    """
+    lines = [transcript.topic or "Untitled transcript", ""]
+    if transcript.preview:
+        lines.append(transcript.preview)
+        lines.append("")
+    if transcript.key_insight:
+        lines.append("Key insights covered:")
+        lines.extend(f"- {insight}" for insight in transcript.key_insight)
+        lines.append("")
+    lines.append(
+        "[Dev placeholder: this environment has no stored full transcript body yet - "
+        "the text above is assembled from the preview and key-insight fields. Replace "
+        "this with the real extracted transcript text before shipping.]"
+    )
+    return "\n".join(lines)
+
+
+def handle_get_full_text(user_id: int, transcript_id: int) -> TranscriptFullTextResponse:
+    session = get_session()
+    try:
+        transcript = (
+            session.query(Transcript)
+            .filter(Transcript.id == transcript_id, Transcript.is_active.is_(True))
+            .first()
+        )
+        if not transcript:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+
+        if not _has_active_entitlement(session, user_id, transcript_id):
+            raise HTTPException(status_code=403, detail="You do not have access to this transcript.")
+
+        return TranscriptFullTextResponse(fullText=_build_dev_full_text(transcript))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to build full text for transcript %s", transcript_id)
+        raise HTTPException(status_code=500, detail="Internal error") from None
+    finally:
+        session.close()
+
+
+@dataclass
+class DownloadResult:
+    # Exactly one of these is set. redirect_url: the route 307s the browser
+    # straight to storage - no file bytes ever pass through this server, so
+    # this endpoint's own load/bandwidth stays flat regardless of file size or
+    # download volume. Requires the storage bucket's CORS policy to allow the
+    # frontend origin, since the browser's fetch() reads the redirected
+    # response directly from a different origin.
+    redirect_url: str | None = None
+    pdf_bytes: bytes | None = None
+
+
+def handle_download_transcript(user_id: int, transcript_id: int) -> DownloadResult:
+    session = get_session()
+    try:
+        transcript = (
+            session.query(Transcript)
+            .filter(Transcript.id == transcript_id, Transcript.is_active.is_(True))
+            .first()
+        )
+        if not transcript:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+
+        if not _has_active_entitlement(session, user_id, transcript_id):
+            raise HTTPException(status_code=403, detail="You do not have access to this transcript.")
+
+        if get_settings().signing_service.is_configured and transcript.final_transcript:
+            url = get_signed_url(transcript_id, transcript.final_transcript)
+            return DownloadResult(redirect_url=url)
+
+        # Dev fallback: generate a placeholder PDF from available fields -
+        # there's no real file to redirect to until the signing service above
+        # is actually configured.
+        full_text = _build_dev_full_text(transcript)
+        return DownloadResult(pdf_bytes=generate_transcript_pdf(transcript, full_text))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to generate download for transcript %s", transcript_id)
         raise HTTPException(status_code=500, detail="Internal error") from None
     finally:
         session.close()

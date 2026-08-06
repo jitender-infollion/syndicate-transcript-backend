@@ -19,6 +19,13 @@ _TEST_ENV = {
     "FRONTEND_BASE_URL": "http://localhost:5173",
     "LOG_LEVEL": "WARNING",
     "LOG_FORMAT": "console",
+    # Dummy but non-empty so PaymentConfig.is_configured is True in tests -
+    # RazorpayService itself is monkeypatched, these values are never used
+    # to make a real request.
+    "RAZORPAY_KEY_ID": "rzp_test_dummy",
+    "RAZORPAY_KEY_SECRET": "dummy_secret",
+    "RAZORPAY_WEBHOOK_SECRET": "dummy_webhook_secret",
+    "PAYMENT_CURRENCY": "USD",
 }
 
 
@@ -31,8 +38,8 @@ def _warn_if_shared_with_dev(url: str) -> None:
     if dev_url and url == dev_url:
         print(
             f"\nWARNING: {_TEST_DB_ENV} is the same database as DATABASE_URL. "
-            "Every test run TRUNCATEs sessions/entitlements/cart_items/carts/transcripts/authors/users, erasing all "
-            "real data in this database. Proceeding because this was an explicit choice.\n",
+            "Every test run TRUNCATEs sessions/entitlements/order_items/orders/cart_items/carts/transcripts/"
+            "authors/users, erasing all real data in this database. Proceeding because this was an explicit choice.\n",
             file=sys.stderr,
         )
 
@@ -72,8 +79,8 @@ def _clean_tables(request):
         with eng.begin() as conn:
             conn.execute(
                 text(
-                    "TRUNCATE sessions, entitlements, cart_items, carts, transcripts, authors, users "
-                    "RESTART IDENTITY CASCADE"
+                    "TRUNCATE sessions, entitlements, invoices, order_items, orders, cart_items, carts, "
+                    "transcripts, authors, users RESTART IDENTITY CASCADE"
                 )
             )
     yield
@@ -84,6 +91,12 @@ def client(engine):
     import config
 
     config._settings = None
+    import apis.dependencies as dependencies
+
+    dependencies._orders_controller = None
+    from utils.rate_limiter import reset_rate_limits
+
+    reset_rate_limits()
     import main
 
     with TestClient(main.app) as c:

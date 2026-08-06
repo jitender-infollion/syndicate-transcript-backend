@@ -15,6 +15,11 @@ from utils.response import error_response
 # don't accidentally qualify.
 PUBLIC_PATH_RE = re.compile(r"^/api/transcripts/[^/]+$")
 
+# Payment gateway webhooks are server-to-server calls from the gateway (e.g.
+# Razorpay) - they never carry a Bearer token. Authenticity is verified inside
+# the route itself via the gateway's own signature header, not a JWT.
+WEBHOOK_PATH_RE = re.compile(r"^/api/orders/webhook/[^/]+$")
+
 # Cart add/view/remove must work for both anonymous and logged-in callers, so
 # these paths never 401 - but if a valid Bearer token IS present, it's still
 # decoded and attached, so routes can tell a guest from a logged-in user.
@@ -47,7 +52,7 @@ UNPROTECTED_PATHS = {
 
 async def jwt_middleware(request: Request, call_next):
     path = request.url.path
-    if path in UNPROTECTED_PATHS or PUBLIC_PATH_RE.match(path):
+    if path in UNPROTECTED_PATHS or PUBLIC_PATH_RE.match(path) or WEBHOOK_PATH_RE.match(path):
         return await call_next(request)
 
     if path in SOFT_AUTH_PATHS or SOFT_AUTH_PATH_RE.match(path):

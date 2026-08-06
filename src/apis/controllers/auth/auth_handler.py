@@ -23,6 +23,7 @@ from services.crypto.email_crypto import hash_email
 from services.crypto.otp_crypto import hash_otp
 from services.database.postgres.connection import get_session
 from services.email.email_service import send_login_otp, send_password_reset_link, send_registration_otp
+from utils.rate_limiter import check_ip_rate_limit
 
 from .auth_schema import AuthResponse, AuthUserResponse, PendingAuthResponse, RegisterRequest
 
@@ -35,21 +36,26 @@ logger = logging.getLogger(__name__)
 # issue/verify time (unverified -> signup code, verified -> login code), so
 # no separate purpose column is needed.
 EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES = 15
-EMAIL_VERIFICATION_MAX_OTP_ATTEMPTS = 5
-EMAIL_VERIFICATION_OTP_COOLDOWN_MINUTES = 60
+RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS = 5
+RATE_LIMIT_EMAIL_VERIFICATION_COOLDOWN_MINUTES = 60
 
 LOGIN_OTP_EXPIRY_MINUTES = 5
-LOGIN_MAX_OTP_ATTEMPTS = 5
-LOGIN_OTP_COOLDOWN_MINUTES = 15
+RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS = 5
+RATE_LIMIT_LOGIN_OTP_COOLDOWN_MINUTES = 15
 
 # Password login brute-force lockout.
-LOGIN_LOCKOUT_MAX_ATTEMPTS = 5
-LOGIN_LOCKOUT_MINUTES = 15
+RATE_LIMIT_LOGIN_LOCKOUT_MAX_ATTEMPTS = 5
+RATE_LIMIT_LOGIN_LOCKOUT_MINUTES = 15
+
+# Signup has no account to rate-limit by yet (that's the point of the call),
+# so this is IP-based instead - unlike every other limit in this file.
+RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS = 10
+RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS = 3600
 
 # DB-tracked password reset token (replaces the old stateless-JWT reset link -
 # this lets a used link be invalidated, which a bare JWT can't do on its own).
 RESET_TOKEN_EXPIRY_MINUTES = 30
-RESET_REQUEST_COOLDOWN_SECONDS = 60
+RATE_LIMIT_PASSWORD_RESET_COOLDOWN_SECONDS = 60
 
 INVALID_SESSION_DETAIL = "Your verification session has expired. Please sign in again to resume verification."
 INVALID_OTP_LOGIN_SESSION_DETAIL = "Your login session has expired. Please try logging in again."
@@ -141,14 +147,22 @@ def _require_pending_user(session, pending_token: str) -> User:
     return user
 
 
-def handle_register(data: RegisterRequest) -> PendingAuthResponse:
+def handle_register(data: RegisterRequest, ip_address: str | None) -> PendingAuthResponse:
     """Stores the full signup record immediately (including the hashed
     password) and sends an OTP. email_verified stays false until
     handle_verify_registration_otp succeeds. Identity for the rest of the
     verification flow is carried by the returned pending token, not by
     resending email/password - so a later login attempt (handle_login) can
     hand out a fresh pending token to resume verification without the
-    original signup form data."""
+    original signup form data.
+
+    Rate-limited by IP (not by account, unlike login/OTP) - there's no
+    existing user to key a per-account counter on at this point, since the
+    whole point of this call is to create one.
+    """
+    if ip_address:
+        check_ip_rate_limit(f"register:{ip_address}", RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS, RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS)
+
     session = get_session()
     try:
         user = session.query(User).filter(User.email_hash == hash_email(data.email)).first()
@@ -176,8 +190,8 @@ def handle_register(data: RegisterRequest) -> PendingAuthResponse:
             session,
             user,
             EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
-            EMAIL_VERIFICATION_MAX_OTP_ATTEMPTS,
-            EMAIL_VERIFICATION_OTP_COOLDOWN_MINUTES,
+            RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
+            RATE_LIMIT_EMAIL_VERIFICATION_COOLDOWN_MINUTES,
         )
         pending_token = create_pending_verification_token(user.id)
         session.commit()
@@ -208,7 +222,7 @@ def handle_verify_registration_otp(
             session.commit()
             return result
 
-        _verify_otp(session, user, otp, EMAIL_VERIFICATION_MAX_OTP_ATTEMPTS)
+        _verify_otp(session, user, otp, RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS)
         user.email_verified = True
         result = _issue_login(session, user, device_info, ip_address)
         session.commit()
@@ -234,8 +248,8 @@ def handle_resend_otp(pending_token: str) -> PendingAuthResponse:
             session,
             user,
             EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
-            EMAIL_VERIFICATION_MAX_OTP_ATTEMPTS,
-            EMAIL_VERIFICATION_OTP_COOLDOWN_MINUTES,
+            RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
+            RATE_LIMIT_EMAIL_VERIFICATION_COOLDOWN_MINUTES,
         )
         new_pending_token = create_pending_verification_token(user.id)
         session.commit()
@@ -269,8 +283,8 @@ def handle_login(
 
         if not verify_password(password, user.password_hash):
             user.failed_login_attempts += 1
-            if user.failed_login_attempts >= LOGIN_LOCKOUT_MAX_ATTEMPTS:
-                user.locked_until = datetime.utcnow() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+            if user.failed_login_attempts >= RATE_LIMIT_LOGIN_LOCKOUT_MAX_ATTEMPTS:
+                user.locked_until = datetime.utcnow() + timedelta(minutes=RATE_LIMIT_LOGIN_LOCKOUT_MINUTES)
             session.commit()
             raise HTTPException(status_code=401, detail=INVALID_LOGIN_DETAIL)
 
@@ -315,8 +329,8 @@ def handle_send_login_otp(email: str) -> PendingAuthResponse:
             session,
             user,
             LOGIN_OTP_EXPIRY_MINUTES,
-            LOGIN_MAX_OTP_ATTEMPTS,
-            LOGIN_OTP_COOLDOWN_MINUTES,
+            RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS,
+            RATE_LIMIT_LOGIN_OTP_COOLDOWN_MINUTES,
         )
         pending_token = create_otp_login_token(user.id)
         session.commit()
@@ -346,7 +360,7 @@ def handle_verify_login_otp(
         if not user or not user.active:
             raise HTTPException(status_code=401, detail=INVALID_OTP_LOGIN_SESSION_DETAIL)
 
-        _verify_otp(session, user, otp, LOGIN_MAX_OTP_ATTEMPTS)
+        _verify_otp(session, user, otp, RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS)
         result = _issue_login(session, user, device_info, ip_address)
         session.commit()
         return result
@@ -369,7 +383,7 @@ def handle_forgot_password(email: str) -> None:
         if user and user.active:
             if (
                 user.reset_requested_at
-                and (datetime.utcnow() - user.reset_requested_at).total_seconds() < RESET_REQUEST_COOLDOWN_SECONDS
+                and (datetime.utcnow() - user.reset_requested_at).total_seconds() < RATE_LIMIT_PASSWORD_RESET_COOLDOWN_SECONDS
             ):
                 return
             raw_token = secrets.token_urlsafe(32)

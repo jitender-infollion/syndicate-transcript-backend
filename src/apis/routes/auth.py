@@ -34,8 +34,8 @@ def _set_refresh_cookie(response: Response, raw_token: str) -> None:
 
 
 @router.post(P.auth.REGISTER)
-def register(data: RegisterRequest):
-    result = auth_controller.register(data)
+def register(data: RegisterRequest, request: Request):
+    result = auth_controller.register(data, _ip_address(request))
     return success_response(data=result, message="OTP sent to your email. Please verify to complete registration.")
 
 

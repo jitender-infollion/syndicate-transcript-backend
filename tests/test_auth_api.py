@@ -42,6 +42,30 @@ def test_register_stores_account_before_verification(client, monkeypatch):
     assert resp.json()["data"]["tempToken"]
 
 
+def test_register_is_rate_limited_by_ip(client):
+    from apis.controllers.auth.auth_handler import RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS
+
+    # No account exists yet for any of these - the limit is keyed by IP (the
+    # test client's requests all share one), not by email.
+    for i in range(RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS):
+        resp = client.post(
+            "/api/auth/register",
+            json={
+                "name": "Rate Limit",
+                "email": f"ratelimit{i}@example.com",
+                "password": "s3cret123",
+                "companyName": "Acme",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+
+    resp = client.post(
+        "/api/auth/register",
+        json={"name": "One Too Many", "email": "onetoomany@example.com", "password": "s3cret123", "companyName": "Acme"},
+    )
+    assert resp.status_code == 429, resp.text
+
+
 def test_verify_otp_completes_registration_and_returns_token(client, monkeypatch):
     resp = _signup_and_verify(client, monkeypatch)
     assert resp.status_code == 200, resp.text
@@ -180,14 +204,14 @@ def _max_out_otp(engine, email: str, expiry_minutes: int, max_attempts: int, iss
 def test_login_otp_send_is_rate_limited_after_max_attempts(client, monkeypatch, engine):
     from datetime import datetime, timezone
 
-    from apis.controllers.auth.auth_handler import LOGIN_MAX_OTP_ATTEMPTS, LOGIN_OTP_EXPIRY_MINUTES
+    from apis.controllers.auth.auth_handler import RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS, LOGIN_OTP_EXPIRY_MINUTES
 
     _signup_and_verify(client, monkeypatch, email="loginratelimit@example.com", password="s3cret123")
     _max_out_otp(
         engine,
         "loginratelimit@example.com",
         LOGIN_OTP_EXPIRY_MINUTES,
-        LOGIN_MAX_OTP_ATTEMPTS,
+        RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS,
         datetime.now(timezone.utc),
     )
 
@@ -199,15 +223,15 @@ def test_login_otp_send_allowed_again_after_cooldown_expires(client, monkeypatch
     from datetime import datetime, timedelta, timezone
 
     from apis.controllers.auth.auth_handler import (
-        LOGIN_MAX_OTP_ATTEMPTS,
-        LOGIN_OTP_COOLDOWN_MINUTES,
+        RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS,
+        RATE_LIMIT_LOGIN_OTP_COOLDOWN_MINUTES,
         LOGIN_OTP_EXPIRY_MINUTES,
     )
 
     _signup_and_verify(client, monkeypatch, email="logincooldownover@example.com", password="s3cret123")
     monkeypatch.setattr("apis.controllers.auth.auth_handler.send_login_otp", lambda to_email, otp: None)
-    long_ago = datetime.now(timezone.utc) - timedelta(minutes=LOGIN_OTP_COOLDOWN_MINUTES + 1)
-    _max_out_otp(engine, "logincooldownover@example.com", LOGIN_OTP_EXPIRY_MINUTES, LOGIN_MAX_OTP_ATTEMPTS, long_ago)
+    long_ago = datetime.now(timezone.utc) - timedelta(minutes=RATE_LIMIT_LOGIN_OTP_COOLDOWN_MINUTES + 1)
+    _max_out_otp(engine, "logincooldownover@example.com", LOGIN_OTP_EXPIRY_MINUTES, RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS, long_ago)
 
     resp = client.post("/api/auth/login/otp/send", json={"email": "logincooldownover@example.com"})
     assert resp.status_code == 200, resp.text
@@ -217,7 +241,7 @@ def test_registration_otp_resend_is_rate_limited_after_max_attempts(client, monk
     from datetime import datetime, timezone
 
     from apis.controllers.auth.auth_handler import (
-        EMAIL_VERIFICATION_MAX_OTP_ATTEMPTS,
+        RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
         EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
     )
 
@@ -226,7 +250,7 @@ def test_registration_otp_resend_is_rate_limited_after_max_attempts(client, monk
         engine,
         "regratelimit@example.com",
         EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
-        EMAIL_VERIFICATION_MAX_OTP_ATTEMPTS,
+        RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
         datetime.now(timezone.utc),
     )
 
@@ -434,11 +458,11 @@ def test_reset_password_link_cannot_be_reused(client, monkeypatch):
 
 
 def test_login_locks_account_after_max_failed_attempts(client, monkeypatch):
-    from apis.controllers.auth.auth_handler import LOGIN_LOCKOUT_MAX_ATTEMPTS
+    from apis.controllers.auth.auth_handler import RATE_LIMIT_LOGIN_LOCKOUT_MAX_ATTEMPTS
 
     _signup_and_verify(client, monkeypatch, email="lockout@example.com", password="correctpass123")
 
-    for _ in range(LOGIN_LOCKOUT_MAX_ATTEMPTS):
+    for _ in range(RATE_LIMIT_LOGIN_LOCKOUT_MAX_ATTEMPTS):
         resp = client.post("/api/auth/login", json={"email": "lockout@example.com", "password": "wrongpass"})
         assert resp.status_code == 401
 

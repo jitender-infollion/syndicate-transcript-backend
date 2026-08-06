@@ -25,9 +25,9 @@ from .auth_schema import (
 from .auth_validator import validate_otp_format, validate_password
 
 
-def register(data: RegisterRequest) -> PendingAuthResponse:
+def register(data: RegisterRequest, ip_address: str | None) -> PendingAuthResponse:
     validate_password(data.password)
-    return handle_register(data)
+    return handle_register(data, ip_address)
 
 
 def verify_registration_otp(

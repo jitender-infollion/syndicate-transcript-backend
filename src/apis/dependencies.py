@@ -1,5 +1,10 @@
 from fastapi import HTTPException, Request
 
+from apis.controllers.orders.orders_controller import OrdersController
+from apis.controllers.orders.orders_handler import OrdersHandler
+from config import get_settings
+from services.payment import RazorpayService
+
 
 def get_current_user_id(request: Request) -> int:
     """User id attached by the JWT middleware. Use on every protected route."""
@@ -18,3 +23,16 @@ def get_current_user_id_optional(request: Request) -> int | None:
     """
     user_id = getattr(request.state, "user_id", None)
     return int(user_id) if user_id else None
+
+
+_orders_controller: OrdersController | None = None
+
+
+def get_orders_controller() -> OrdersController:
+    """Lazily-built singleton so RazorpayService's SDK client isn't re-constructed per request."""
+    global _orders_controller
+    if _orders_controller is None:
+        payment_service = RazorpayService(get_settings())
+        handler = OrdersHandler(payment_service)
+        _orders_controller = OrdersController(handler)
+    return _orders_controller

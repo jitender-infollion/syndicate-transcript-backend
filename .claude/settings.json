@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(*.env)",
+      "Read(.envs/**)",
+
+      "Write(.env)",
+      "Write(.env.*)",
+      "Write(*.env)",
+      "Write(.envs/**)",
+
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)",
+      "Bash(git reset --hard *)",
+      "Bash(git checkout -- *)",
+      "Bash(chmod -R 777 *)"
+    ]
+  }
+}
