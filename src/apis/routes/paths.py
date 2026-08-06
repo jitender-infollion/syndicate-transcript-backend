@@ -3,6 +3,8 @@ _USERS = "/api/users"
 _TRANSCRIPTS = "/api/transcripts"
 _CART = "/api/cart"
 _ORDERS = "/api/orders"
+_SUPPORT = "/api/support"
+_TOPICS = "/api/topics"
 
 
 class P:
@@ -48,3 +50,11 @@ class P:
         DETAIL = "/{order_id}"
         RECEIPT = "/{order_id}/receipt"
         WEBHOOK = "/webhook/{gateway}"
+
+    class support:
+        BASE = _SUPPORT
+        ROOT = ""
+
+    class topics:
+        BASE = _TOPICS
+        REQUEST = "/request"

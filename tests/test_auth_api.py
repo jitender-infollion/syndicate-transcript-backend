@@ -66,6 +66,41 @@ def test_register_is_rate_limited_by_ip(client):
     assert resp.status_code == 429, resp.text
 
 
+def test_login_is_rate_limited_by_ip(client):
+    from apis.controllers.auth.auth_handler import RATE_LIMIT_LOGIN_IP_MAX_ATTEMPTS
+
+    # Wrong credentials against an account that doesn't even exist - the IP
+    # counter increments before any account lookup, so this alone proves it.
+    for _ in range(RATE_LIMIT_LOGIN_IP_MAX_ATTEMPTS):
+        resp = client.post("/api/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
+        assert resp.status_code == 401, resp.text
+
+    resp = client.post("/api/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
+    assert resp.status_code == 429, resp.text
+
+
+def test_login_otp_send_is_rate_limited_by_ip(client):
+    from apis.controllers.auth.auth_handler import RATE_LIMIT_LOGIN_OTP_IP_MAX_ATTEMPTS
+
+    for _ in range(RATE_LIMIT_LOGIN_OTP_IP_MAX_ATTEMPTS):
+        resp = client.post("/api/auth/login/otp/send", json={"email": "nobody@example.com"})
+        assert resp.status_code == 401, resp.text
+
+    resp = client.post("/api/auth/login/otp/send", json={"email": "nobody@example.com"})
+    assert resp.status_code == 429, resp.text
+
+
+def test_forgot_password_is_rate_limited_by_ip(client):
+    from apis.controllers.auth.auth_handler import RATE_LIMIT_FORGOT_PASSWORD_IP_MAX_ATTEMPTS
+
+    for _ in range(RATE_LIMIT_FORGOT_PASSWORD_IP_MAX_ATTEMPTS):
+        resp = client.post("/api/auth/forgot-password", json={"email": "nobody@example.com"})
+        assert resp.status_code == 200, resp.text
+
+    resp = client.post("/api/auth/forgot-password", json={"email": "nobody@example.com"})
+    assert resp.status_code == 429, resp.text
+
+
 def test_verify_otp_completes_registration_and_returns_token(client, monkeypatch):
     resp = _signup_and_verify(client, monkeypatch)
     assert resp.status_code == 200, resp.text

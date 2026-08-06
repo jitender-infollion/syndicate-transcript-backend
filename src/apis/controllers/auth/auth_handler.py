@@ -48,9 +48,25 @@ RATE_LIMIT_LOGIN_LOCKOUT_MAX_ATTEMPTS = 5
 RATE_LIMIT_LOGIN_LOCKOUT_MINUTES = 15
 
 # Signup has no account to rate-limit by yet (that's the point of the call),
-# so this is IP-based instead - unlike every other limit in this file.
+# so this is IP-based instead of account-based.
 RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS = 10
 RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS = 3600
+
+# Everything below is IP-based *in addition to* the account-based limits
+# above - those alone don't stop one IP from spreading attempts across many
+# different target accounts (credential stuffing) or spamming OTP/reset
+# emails to arbitrary real addresses. Login gets a higher ceiling than the
+# email-sending endpoints since offices/NAT genuinely share one IP across
+# many legitimate logins; the per-account lockout still catches a focused
+# attack on a single account.
+RATE_LIMIT_LOGIN_IP_MAX_ATTEMPTS = 20
+RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS = 600
+
+RATE_LIMIT_LOGIN_OTP_IP_MAX_ATTEMPTS = 10
+RATE_LIMIT_LOGIN_OTP_IP_WINDOW_SECONDS = 3600
+
+RATE_LIMIT_FORGOT_PASSWORD_IP_MAX_ATTEMPTS = 10
+RATE_LIMIT_FORGOT_PASSWORD_IP_WINDOW_SECONDS = 3600
 
 # DB-tracked password reset token (replaces the old stateless-JWT reset link -
 # this lets a used link be invalidated, which a bare JWT can't do on its own).
@@ -269,6 +285,9 @@ def handle_resend_otp(pending_token: str) -> PendingAuthResponse:
 def handle_login(
     email: str, password: str, device_info: str | None, ip_address: str | None
 ) -> tuple[AuthResponse, str]:
+    if ip_address:
+        check_ip_rate_limit(f"login:{ip_address}", RATE_LIMIT_LOGIN_IP_MAX_ATTEMPTS, RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS)
+
     session = get_session()
     try:
         user = session.query(User).filter(User.email_hash == hash_email(email)).first()
@@ -318,7 +337,12 @@ def handle_login(
         session.close()
 
 
-def handle_send_login_otp(email: str) -> PendingAuthResponse:
+def handle_send_login_otp(email: str, ip_address: str | None) -> PendingAuthResponse:
+    if ip_address:
+        check_ip_rate_limit(
+            f"login_otp:{ip_address}", RATE_LIMIT_LOGIN_OTP_IP_MAX_ATTEMPTS, RATE_LIMIT_LOGIN_OTP_IP_WINDOW_SECONDS
+        )
+
     session = get_session()
     try:
         user = session.query(User).filter(User.email_hash == hash_email(email)).first()
@@ -374,7 +398,14 @@ def handle_verify_login_otp(
         session.close()
 
 
-def handle_forgot_password(email: str) -> None:
+def handle_forgot_password(email: str, ip_address: str | None) -> None:
+    if ip_address:
+        check_ip_rate_limit(
+            f"forgot_password:{ip_address}",
+            RATE_LIMIT_FORGOT_PASSWORD_IP_MAX_ATTEMPTS,
+            RATE_LIMIT_FORGOT_PASSWORD_IP_WINDOW_SECONDS,
+        )
+
     session = get_session()
     try:
         user = session.query(User).filter(User.email_hash == hash_email(email)).first()

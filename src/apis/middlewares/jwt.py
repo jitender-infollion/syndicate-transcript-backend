@@ -26,7 +26,12 @@ WEBHOOK_PATH_RE = re.compile(r"^/api/orders/webhook/[^/]+$")
 # /api/cart/merge is deliberately NOT included here: merging into "your
 # account" requires a real logged-in identity, so it falls through to the
 # hard-auth branch below like every other protected route.
-SOFT_AUTH_PATHS = {"/api/cart"}
+#
+# Support/topic-request submissions are public (anyone can submit, no account
+# needed) but still opportunistically record who it was if the submitter
+# happened to be logged in - unlike UNPROTECTED_PATHS, soft-auth still decodes
+# a Bearer token when one is present, it just never requires one.
+SOFT_AUTH_PATHS = {"/api/cart", "/api/support", "/api/topics/request"}
 SOFT_AUTH_PATH_RE = re.compile(r"^/api/cart/items(/[^/]+)?$")
 
 UNPROTECTED_PATHS = {

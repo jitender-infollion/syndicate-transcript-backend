@@ -45,8 +45,8 @@ def login(data: LoginRequest, device_info: str | None, ip_address: str | None) -
     return handle_login(data.email, data.password, device_info, ip_address)
 
 
-def send_login_otp(data: LoginOtpSendRequest) -> PendingAuthResponse:
-    return handle_send_login_otp(data.email)
+def send_login_otp(data: LoginOtpSendRequest, ip_address: str | None) -> PendingAuthResponse:
+    return handle_send_login_otp(data.email, ip_address)
 
 
 def verify_login_otp(
@@ -56,8 +56,8 @@ def verify_login_otp(
     return handle_verify_login_otp(data.tempToken, data.otp, device_info, ip_address)
 
 
-def forgot_password(data: ForgotPasswordRequest) -> None:
-    handle_forgot_password(data.email)
+def forgot_password(data: ForgotPasswordRequest, ip_address: str | None) -> None:
+    handle_forgot_password(data.email, ip_address)
 
 
 def reset_password(data: ResetPasswordRequest) -> None:

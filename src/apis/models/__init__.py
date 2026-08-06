@@ -1,6 +1,7 @@
 from .author import Author
 from .cart import Cart, CartItem, CartStatus
 from .entitlement import Entitlement, EntitlementSource, EntitlementStatus
+from .inquiries import SupportMessage, TopicRequest
 from .invoice import Invoice
 from .order import Order, OrderItem, OrderStatus
 from .session import Session
@@ -23,4 +24,6 @@ __all__ = [
     "OrderItem",
     "OrderStatus",
     "Invoice",
+    "SupportMessage",
+    "TopicRequest",
 ]

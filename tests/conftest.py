@@ -80,7 +80,7 @@ def _clean_tables(request):
             conn.execute(
                 text(
                     "TRUNCATE sessions, entitlements, invoices, order_items, orders, cart_items, carts, "
-                    "transcripts, authors, users RESTART IDENTITY CASCADE"
+                    "support_messages, topic_requests, transcripts, authors, users RESTART IDENTITY CASCADE"
                 )
             )
     yield

@@ -62,8 +62,8 @@ def login(data: LoginRequest, request: Request, response: Response):
 
 
 @router.post(P.auth.LOGIN_OTP_SEND)
-def send_login_otp(data: LoginOtpSendRequest):
-    result = auth_controller.send_login_otp(data)
+def send_login_otp(data: LoginOtpSendRequest, request: Request):
+    result = auth_controller.send_login_otp(data, _ip_address(request))
     return success_response(data=result, message="OTP sent to your email.")
 
 
@@ -89,8 +89,8 @@ def refresh(request: Request, response: Response):
 
 
 @router.post(P.auth.FORGOT_PASSWORD)
-def forgot_password(data: ForgotPasswordRequest):
-    auth_controller.forgot_password(data)
+def forgot_password(data: ForgotPasswordRequest, request: Request):
+    auth_controller.forgot_password(data, _ip_address(request))
     return success_response(message="Password reset link has been sent to your email.")
 
 
