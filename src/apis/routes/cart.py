@@ -15,11 +15,7 @@ router = APIRouter(prefix=P.cart.BASE, tags=["Cart"])
 
 
 def _resolve_guest_id(request: Request, response: Response) -> str:
-    """Backend-owned guest cart identity - never trusts a client-supplied id.
-
-    Only called for unauthenticated callers. Reuses the existing cookie if
-    present, otherwise mints a new one and attaches it to the response.
-    """
+    # Backend-owned guest cart identity - never trusts a client-supplied id.
     existing = request.cookies.get(GUEST_CART_COOKIE_NAME)
     if existing:
         return existing

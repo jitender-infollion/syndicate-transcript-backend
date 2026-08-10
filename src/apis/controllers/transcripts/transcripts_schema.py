@@ -30,20 +30,8 @@ class TranscriptListItem(BaseModel):
     createdAt: datetime | None
 
 
-class TranscriptDetailResponse(BaseModel):
-    id: int
-    topic: str | None
-    domain: list[str]
-    geography: list[str]
-    preview: str | None
-    finalTranscript: FinalTranscriptRef | None
-    keyInsight: list[str]
-    price: int
-    author: AuthorSummary | None
-    isActive: bool
-    publishedAt: datetime | None
-    approvedAt: datetime | None
-    createdAt: datetime | None
+class TranscriptDetailResponse(TranscriptListItem):
+    pass
 
 
 class TranscriptAccessResponse(BaseModel):
@@ -58,10 +46,7 @@ class TranscriptFilterRequest(BaseModel):
     domain: list[str] | None = None
     geography: list[str] | None = None
     topic: str | None = None
-    # Free-text search across topic, preview, domain, and geography - what
-    # the main search bar sends, as opposed to `topic`'s narrower exact-field
-    # match (used by structured/programmatic filtering).
-    search: str | None = None
+    search: str | None = None  # free-text across topic/preview/domain/geography
     authorId: int | None = None
     minPrice: int | None = None
     maxPrice: int | None = None

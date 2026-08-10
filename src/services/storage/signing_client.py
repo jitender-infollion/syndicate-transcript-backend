@@ -9,12 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_signed_url(transcript_id: int, final_transcript: dict) -> str:
-    """Ask the external signing service for a fresh presigned URL for this transcript's file.
-
-    Endpoint path and auth header format are placeholders (TBD) pending that
-    service's real contract - this posts the whole config.base_url as the
-    endpoint for now.
-    """
+    # Endpoint path and auth header format are placeholders, pending the real contract.
     settings = get_settings().signing_service
     if not settings.is_configured:
         raise HTTPException(status_code=500, detail="Signing service is not configured.")

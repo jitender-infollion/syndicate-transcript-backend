@@ -9,6 +9,7 @@ from services.database.postgres.connection import Base
 from .schema import UserRole
 
 
+# email is never stored in plaintext - use the `email` property, not email_encrypted directly.
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
@@ -17,9 +18,6 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=True)
-    # email is never stored in plaintext - email_encrypted holds a Fernet token,
-    # email_hash a keyed HMAC used for exact-match lookup. Use the `email`
-    # property below for reading/writing; never query email_encrypted directly.
     email_encrypted = Column(Text, nullable=False)
     email_hash = Column(String, unique=True, nullable=False, index=True)
     role = Column(String, nullable=False, default=UserRole.CUSTOMER.value, server_default=UserRole.CUSTOMER.value)
@@ -28,22 +26,13 @@ class User(Base):
     company_name = Column(String, nullable=True)
     active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
 
-    # Brute-force protection for password login.
     failed_login_attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
     locked_until = Column(DateTime, nullable=True)
 
-    # OTP - single shared field-set for both signup-verification and login
-    # flows; which one is implied by email_verified at issue/verify time.
-    # otp_hash is HMAC-keyed (see services.crypto.otp_crypto), never plaintext.
-    # Single-use is enforced by nulling otp_hash on success, not a separate
-    # "consumed_at" column.
     otp_hash = Column(String, nullable=True)
     otp_expire_time = Column(DateTime, nullable=True)
     otp_retry_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
 
-    # Password reset - DB-tracked token (not a stateless JWT), so a used link
-    # can be invalidated. reset_token_hash is a plain sha256 of a
-    # high-entropy random token - no HMAC pepper needed unlike otp_hash.
     reset_token_hash = Column(String, nullable=True)
     reset_token_expire_at = Column(DateTime, nullable=True)
     reset_requested_at = Column(DateTime, nullable=True)

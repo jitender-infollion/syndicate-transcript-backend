@@ -5,6 +5,7 @@ from services.database.postgres.connection import Base
 from .schema import CartStatus
 
 
+# guest_id is a backend-issued cookie value for unauthenticated carts.
 class Cart(Base):
     __tablename__ = "carts"
     __table_args__ = (
@@ -25,11 +26,9 @@ class Cart(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    # Backend-issued cookie value for unauthenticated carts (see cart_handler / routes/cart.py).
     guest_id = Column(String, nullable=True, index=True)
     status = Column(String, nullable=False, default=CartStatus.ACTIVE.value, server_default=CartStatus.ACTIVE.value)
     created_at = Column(DateTime, server_default=text("now()"), nullable=True)
-    # Only set for guest carts; drives a future abandoned-cart cleanup job, not built yet.
     expires_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, nullable=True)
 

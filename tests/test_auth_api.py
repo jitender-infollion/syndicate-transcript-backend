@@ -3,6 +3,11 @@ from urllib.parse import parse_qs, urlparse
 
 from sqlalchemy import text
 
+# Matches _TEST_ENV's CORS_ALLOWED_ORIGINS in conftest.py - /refresh and
+# /logout now check Origin (CSRF defense), so any test hitting them must send
+# what a real browser would.
+_ORIGIN_HEADERS = {"Origin": "http://localhost:5173"}
+
 
 def _signup(client, monkeypatch, email="jane@example.com", password="s3cret123", name="Jane Doe"):
     captured = {}
@@ -26,6 +31,15 @@ def _signup_and_verify(client, monkeypatch, email="jane@example.com", password="
     return client.post("/api/auth/register/verify-otp", json={"tempToken": pending_token, "otp": otp})
 
 
+def test_docs_are_disabled_by_default(client):
+    # ENABLE_DOCS isn't set in the test environment, so these must not serve
+    # real Swagger/ReDoc/OpenAPI content - the API surface shouldn't be
+    # publicly browsable unless explicitly opted into.
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        resp = client.get(path)
+        assert resp.status_code != 200, f"{path} should not be publicly accessible: {resp.text}"
+
+
 def test_register_stores_account_before_verification(client, monkeypatch):
     resp = client.post(
         "/api/auth/register",
@@ -43,11 +57,11 @@ def test_register_stores_account_before_verification(client, monkeypatch):
 
 
 def test_register_is_rate_limited_by_ip(client):
-    from apis.controllers.auth.auth_handler import RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS
+    from utils.rate_limiter import RateLimits
 
     # No account exists yet for any of these - the limit is keyed by IP (the
     # test client's requests all share one), not by email.
-    for i in range(RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS):
+    for i in range(RateLimits.auth.REGISTER_IP.max_attempts):
         resp = client.post(
             "/api/auth/register",
             json={
@@ -67,11 +81,11 @@ def test_register_is_rate_limited_by_ip(client):
 
 
 def test_login_is_rate_limited_by_ip(client):
-    from apis.controllers.auth.auth_handler import RATE_LIMIT_LOGIN_IP_MAX_ATTEMPTS
+    from utils.rate_limiter import RateLimits
 
     # Wrong credentials against an account that doesn't even exist - the IP
     # counter increments before any account lookup, so this alone proves it.
-    for _ in range(RATE_LIMIT_LOGIN_IP_MAX_ATTEMPTS):
+    for _ in range(RateLimits.auth.LOGIN_IP.max_attempts):
         resp = client.post("/api/auth/login", json={"email": "nobody@example.com", "password": "wrong"})
         assert resp.status_code == 401, resp.text
 
@@ -80,9 +94,9 @@ def test_login_is_rate_limited_by_ip(client):
 
 
 def test_login_otp_send_is_rate_limited_by_ip(client):
-    from apis.controllers.auth.auth_handler import RATE_LIMIT_LOGIN_OTP_IP_MAX_ATTEMPTS
+    from utils.rate_limiter import RateLimits
 
-    for _ in range(RATE_LIMIT_LOGIN_OTP_IP_MAX_ATTEMPTS):
+    for _ in range(RateLimits.auth.LOGIN_OTP_IP.max_attempts):
         resp = client.post("/api/auth/login/otp/send", json={"email": "nobody@example.com"})
         assert resp.status_code == 401, resp.text
 
@@ -91,9 +105,9 @@ def test_login_otp_send_is_rate_limited_by_ip(client):
 
 
 def test_forgot_password_is_rate_limited_by_ip(client):
-    from apis.controllers.auth.auth_handler import RATE_LIMIT_FORGOT_PASSWORD_IP_MAX_ATTEMPTS
+    from utils.rate_limiter import RateLimits
 
-    for _ in range(RATE_LIMIT_FORGOT_PASSWORD_IP_MAX_ATTEMPTS):
+    for _ in range(RateLimits.auth.FORGOT_PASSWORD_IP.max_attempts):
         resp = client.post("/api/auth/forgot-password", json={"email": "nobody@example.com"})
         assert resp.status_code == 200, resp.text
 
@@ -309,6 +323,12 @@ def test_login_blocked_then_resend_otp_then_verify_flow(client, monkeypatch):
         "apis.controllers.auth.auth_handler.send_registration_otp",
         lambda to_email, otp: captured.update(otp=otp),
     )
+    # The scenario is "comes back later", but the test runs both calls
+    # milliseconds apart - clear the in-memory OTP-generation counters so the
+    # 45s resend cooldown (meant for *rapid* resend clicks) doesn't fire here.
+    from utils.rate_limiter import reset_rate_limits
+
+    reset_rate_limits()
     resp = client.post("/api/auth/register/resend-otp", json={"tempToken": pending_token})
     assert resp.status_code == 200, resp.text
     assert "otp" in captured
@@ -357,7 +377,7 @@ def test_logout_without_cookie_still_succeeds(client):
     # Logout doesn't require a Bearer token (access tokens are short-lived,
     # logout must still work if it already expired) and is a no-op-but-200
     # even with nothing to revoke.
-    resp = client.post("/api/auth/logout")
+    resp = client.post("/api/auth/logout", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["success"] is True
 
@@ -372,11 +392,11 @@ def test_logout_revokes_session_so_refresh_then_fails(client, monkeypatch):
     verify_resp = _signup_and_verify(client, monkeypatch, email="logout@example.com")
     assert "refresh_token" in verify_resp.cookies
 
-    resp = client.post("/api/auth/logout")
+    resp = client.post("/api/auth/logout", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["success"] is True
 
-    resp = client.post("/api/auth/refresh")
+    resp = client.post("/api/auth/refresh", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 401
 
 
@@ -384,7 +404,7 @@ def test_refresh_issues_new_access_token_and_rotates_cookie(client, monkeypatch)
     verify_resp = _signup_and_verify(client, monkeypatch, email="refresh@example.com")
     old_refresh_token = verify_resp.cookies["refresh_token"]
 
-    resp = client.post("/api/auth/refresh")
+    resp = client.post("/api/auth/refresh", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 200, resp.text
     assert resp.json()["data"]["token"]
     # The rotated refresh token must differ from the one just used - that's
@@ -395,28 +415,66 @@ def test_refresh_issues_new_access_token_and_rotates_cookie(client, monkeypatch)
 
 
 def test_refresh_without_cookie_fails(client):
-    resp = client.post("/api/auth/refresh")
+    resp = client.post("/api/auth/refresh", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 401
+
+
+def test_refresh_blocks_cross_site_origin(client, monkeypatch):
+    # CSRF regression: a real refresh cookie is present (so this isn't just
+    # test_refresh_without_cookie_fails in disguise), but the Origin is a
+    # completely unrelated site - simulates a malicious page's blind POST.
+    verify_resp = _signup_and_verify(client, monkeypatch, email="csrf-refresh@example.com")
+    assert "refresh_token" in verify_resp.cookies
+
+    resp = client.post("/api/auth/refresh", headers={"Origin": "https://evil.example.com"})
+    assert resp.status_code == 403, resp.text
+
+
+def test_refresh_blocks_missing_origin_and_referer(client, monkeypatch):
+    # Deliberately strict: no Origin and no Referer at all is also rejected,
+    # not treated as same-site-by-default.
+    verify_resp = _signup_and_verify(client, monkeypatch, email="csrf-noorigin@example.com")
+    assert "refresh_token" in verify_resp.cookies
+
+    resp = client.post("/api/auth/refresh")
+    assert resp.status_code == 403, resp.text
+
+
+def test_refresh_accepts_matching_referer_without_origin(client, monkeypatch):
+    # Origin is what real browsers send on POST, but the fallback to Referer
+    # must also work for a legitimate same-site request that happens to omit it.
+    verify_resp = _signup_and_verify(client, monkeypatch, email="csrf-referer@example.com")
+    assert "refresh_token" in verify_resp.cookies
+
+    resp = client.post("/api/auth/refresh", headers={"Referer": "http://localhost:5173/checkout"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_logout_blocks_cross_site_origin(client, monkeypatch):
+    _signup_and_verify(client, monkeypatch, email="csrf-logout@example.com")
+
+    resp = client.post("/api/auth/logout", headers={"Origin": "https://evil.example.com"})
+    assert resp.status_code == 403, resp.text
 
 
 def test_refresh_reuse_of_rotated_out_token_revokes_whole_chain(client, monkeypatch):
     verify_resp = _signup_and_verify(client, monkeypatch, email="reuse@example.com")
     old_refresh_token = verify_resp.cookies["refresh_token"]
 
-    resp = client.post("/api/auth/refresh")
+    resp = client.post("/api/auth/refresh", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 200, resp.text
     new_refresh_token = resp.cookies["refresh_token"]
 
     # Replay the original (now rotated-out) token - simulates a stolen token
     # being used after the legitimate client already rotated past it.
     client.cookies.set("refresh_token", old_refresh_token)
-    resp = client.post("/api/auth/refresh")
+    resp = client.post("/api/auth/refresh", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 401, resp.text
 
     # The legitimately-rotated token must now be revoked too - reuse
     # detection nukes the whole chain, not just the replayed token.
     client.cookies.set("refresh_token", new_refresh_token)
-    resp = client.post("/api/auth/refresh")
+    resp = client.post("/api/auth/refresh", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 401, resp.text
 
 
@@ -433,7 +491,7 @@ def test_refresh_with_expired_session_fails(client, monkeypatch, engine):
             {"expires_at": datetime.now(timezone.utc) - timedelta(days=1), "token_hash": token_hash},
         )
 
-    resp = client.post("/api/auth/refresh")
+    resp = client.post("/api/auth/refresh", headers=_ORIGIN_HEADERS)
     assert resp.status_code == 401, resp.text
 
 

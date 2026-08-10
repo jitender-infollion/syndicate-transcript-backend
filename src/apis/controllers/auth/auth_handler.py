@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import math
 import secrets
 from datetime import datetime, timedelta
 
@@ -10,31 +9,25 @@ from sqlalchemy.exc import IntegrityError
 from apis.models.session import Session
 from apis.models.user import User, UserRole
 from apis.security import (
-    create_access_token,
     create_otp_login_token,
     create_pending_verification_token,
     decode_otp_login_token,
-    decode_pending_verification_token,
     hash_password,
     verify_password,
 )
 from config import get_settings
 from services.crypto.email_crypto import hash_email
-from services.crypto.otp_crypto import hash_otp
 from services.database.postgres.connection import get_session
 from services.email.email_service import send_login_otp, send_password_reset_link, send_registration_otp
-from utils.rate_limiter import check_ip_rate_limit
+from utils.rate_limiter import RateLimits
 
-from .auth_schema import AuthResponse, AuthUserResponse, PendingAuthResponse, RegisterRequest
+from .auth_helper import issue_login, issue_otp, require_pending_user, verify_otp
+from .auth_schema import AuthResponse, PendingAuthResponse, RegisterRequest
 
 logger = logging.getLogger(__name__)
 
-# Per-flow OTP expiry / attempt-limit / post-limit cooldown. Email
-# verification codes live longer since users may read the email later; login
-# codes are entered right away and get a tighter window. Both flows share one
-# field-set on `users` - which flow applies is implied by email_verified at
-# issue/verify time (unverified -> signup code, verified -> login code), so
-# no separate purpose column is needed.
+# Registration and login OTPs share one field-set on `users`; which flow
+# applies is implied by email_verified at issue/verify time.
 EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES = 15
 RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS = 5
 RATE_LIMIT_EMAIL_VERIFICATION_COOLDOWN_MINUTES = 60
@@ -43,182 +36,75 @@ LOGIN_OTP_EXPIRY_MINUTES = 5
 RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS = 5
 RATE_LIMIT_LOGIN_OTP_COOLDOWN_MINUTES = 15
 
-# Password login brute-force lockout.
 RATE_LIMIT_LOGIN_LOCKOUT_MAX_ATTEMPTS = 5
 RATE_LIMIT_LOGIN_LOCKOUT_MINUTES = 15
 
-# Signup has no account to rate-limit by yet (that's the point of the call),
-# so this is IP-based instead of account-based.
-RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS = 10
-RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS = 3600
-
-# Everything below is IP-based *in addition to* the account-based limits
-# above - those alone don't stop one IP from spreading attempts across many
-# different target accounts (credential stuffing) or spamming OTP/reset
-# emails to arbitrary real addresses. Login gets a higher ceiling than the
-# email-sending endpoints since offices/NAT genuinely share one IP across
-# many legitimate logins; the per-account lockout still catches a focused
-# attack on a single account.
-RATE_LIMIT_LOGIN_IP_MAX_ATTEMPTS = 20
-RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS = 600
-
-RATE_LIMIT_LOGIN_OTP_IP_MAX_ATTEMPTS = 10
-RATE_LIMIT_LOGIN_OTP_IP_WINDOW_SECONDS = 3600
-
-RATE_LIMIT_FORGOT_PASSWORD_IP_MAX_ATTEMPTS = 10
-RATE_LIMIT_FORGOT_PASSWORD_IP_WINDOW_SECONDS = 3600
-
-# DB-tracked password reset token (replaces the old stateless-JWT reset link -
-# this lets a used link be invalidated, which a bare JWT can't do on its own).
+# DB-tracked so a used reset link can be invalidated (a bare JWT can't be).
 RESET_TOKEN_EXPIRY_MINUTES = 30
 RATE_LIMIT_PASSWORD_RESET_COOLDOWN_SECONDS = 60
 
-INVALID_SESSION_DETAIL = "Your verification session has expired. Please sign in again to resume verification."
 INVALID_OTP_LOGIN_SESSION_DETAIL = "Your login session has expired. Please try logging in again."
 INVALID_LOGIN_DETAIL = "Invalid email or password."
 INVALID_REFRESH_DETAIL = "Your session has expired. Please log in again."
 
 
-def _generate_otp() -> str:
-    return f"{secrets.randbelow(1_000_000):06d}"
-
-
-def _issue_otp(session, user: User, expiry_minutes: int, max_attempts: int, cooldown_minutes: int) -> str:
-    # Cooldown only kicks in once the current outstanding code's attempts are
-    # exhausted - a user who hasn't guessed wrong yet can resend anytime.
-    if user.otp_retry_count >= max_attempts and user.otp_expire_time is not None:
-        issued_at = user.otp_expire_time - timedelta(minutes=expiry_minutes)
-        cooldown_ends_at = issued_at + timedelta(minutes=cooldown_minutes)
-        remaining = cooldown_ends_at - datetime.utcnow()
-        if remaining.total_seconds() > 0:
-            wait_minutes = max(1, math.ceil(remaining.total_seconds() / 60))
-            raise HTTPException(
-                status_code=429,
-                detail=f"Too many attempts. Please try again in {wait_minutes} minute"
-                f"{'s' if wait_minutes != 1 else ''}.",
-            )
-
-    otp_code = _generate_otp()
-    user.otp_hash = hash_otp(otp_code)
-    user.otp_expire_time = datetime.utcnow() + timedelta(minutes=expiry_minutes)
-    user.otp_retry_count = 0
-    return otp_code
-
-
-def _verify_otp(session, user: User, otp: str, max_attempts: int) -> None:
-    if not user.otp_hash or user.otp_expire_time is None:
-        raise HTTPException(status_code=400, detail="No OTP found. Please request a new one.")
-    if user.otp_expire_time < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
-    if user.otp_retry_count >= max_attempts:
-        raise HTTPException(status_code=429, detail="Too many incorrect attempts. Please request a new OTP.")
-    if hash_otp(otp) != user.otp_hash:
-        user.otp_retry_count += 1
-        session.commit()
-        raise HTTPException(status_code=400, detail="Invalid OTP.")
-
-    # Single-use: nothing left to match against on replay.
-    user.otp_hash = None
-    user.otp_expire_time = None
-    user.otp_retry_count = 0
-
-
-def _to_auth_response(user: User) -> AuthResponse:
-    token = create_access_token(user_id=user.id, user_name=user.name, email=user.email)
-    return AuthResponse(
-        token=token,
-        user=AuthUserResponse(id=str(user.id), name=user.name, email=user.email, companyName=user.company_name),
-    )
-
-
-def _issue_session(session, user: User, device_info: str | None, ip_address: str | None) -> str:
-    raw_token = secrets.token_urlsafe(32)
-    session.add(
-        Session(
-            user_id=user.id,
-            refresh_token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
-            device_info=device_info,
-            ip_address=ip_address,
-            expires_at=datetime.utcnow() + timedelta(days=get_settings().auth.refresh_token_expiry_days),
-        )
-    )
-    return raw_token
-
-
-def _issue_login(
-    session, user: User, device_info: str | None, ip_address: str | None
-) -> tuple[AuthResponse, str]:
-    auth_response = _to_auth_response(user)
-    refresh_token = _issue_session(session, user, device_info, ip_address)
-    return auth_response, refresh_token
-
-
-def _require_pending_user(session, pending_token: str) -> User:
-    user_id = decode_pending_verification_token(pending_token)
-    if user_id is None:
-        raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL)
-    user = session.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL)
-    return user
+def _enforce_otp_generation_limits(purpose: str, email: str, ip_address: str | None) -> None:
+    # Caps OTP generation itself, not just wrong guesses. Keyed per purpose so
+    # a signup's counters can't block an unrelated login-OTP request.
+    email_key = hash_email(email)
+    RateLimits.auth.OTP_RESEND_COOLDOWN.check(f"otp_cooldown:{purpose}:{email_key}")
+    RateLimits.auth.OTP_EMAIL_BURST.check(f"otp_email_burst:{purpose}:{email_key}")
+    RateLimits.auth.OTP_EMAIL_HOURLY.check(f"otp_email_hourly:{purpose}:{email_key}")
+    RateLimits.auth.OTP_EMAIL_DAILY.check(f"otp_email_daily:{purpose}:{email_key}")
+    if ip_address:
+        RateLimits.auth.OTP_IP_BURST.check(f"otp_ip_burst:{purpose}:{ip_address}")
+        RateLimits.auth.OTP_IP_HOURLY.check(f"otp_ip_hourly:{purpose}:{ip_address}")
 
 
 def handle_register(data: RegisterRequest, ip_address: str | None) -> PendingAuthResponse:
-    """Stores the full signup record immediately (including the hashed
-    password) and sends an OTP. email_verified stays false until
-    handle_verify_registration_otp succeeds. Identity for the rest of the
-    verification flow is carried by the returned pending token, not by
-    resending email/password - so a later login attempt (handle_login) can
-    hand out a fresh pending token to resume verification without the
-    original signup form data.
-
-    Rate-limited by IP (not by account, unlike login/OTP) - there's no
-    existing user to key a per-account counter on at this point, since the
-    whole point of this call is to create one.
-    """
     if ip_address:
-        check_ip_rate_limit(f"register:{ip_address}", RATE_LIMIT_REGISTER_IP_MAX_ATTEMPTS, RATE_LIMIT_REGISTER_IP_WINDOW_SECONDS)
+        RateLimits.auth.REGISTER_IP.check(f"register:{ip_address}")
 
     session = get_session()
     try:
-        user = session.query(User).filter(User.email_hash == hash_email(data.email)).first()
-        if user and user.email_verified:
-            raise HTTPException(status_code=409, detail="An account with this email already exists.")
+        try:
+            user = session.query(User).filter(User.email_hash == hash_email(data.email)).first()
+            if user and user.email_verified:
+                raise HTTPException(status_code=409, detail="An account with this email already exists.")
 
-        password_hash = hash_password(data.password)
-        if user:
-            user.name = data.name
-            user.password_hash = password_hash
-            user.company_name = data.companyName
-        else:
-            user = User(
-                name=data.name,
-                password_hash=password_hash,
-                company_name=data.companyName,
-                role=UserRole.CUSTOMER.value,
-                email_verified=False,
+            password_hash = hash_password(data.password)
+            if user:
+                user.name = data.name
+                user.password_hash = password_hash
+                user.company_name = data.companyName
+            else:
+                user = User(
+                    name=data.name,
+                    password_hash=password_hash,
+                    company_name=data.companyName,
+                    role=UserRole.CUSTOMER.value,
+                    email_verified=False,
+                )
+                user.email = data.email
+                session.add(user)
+            session.flush()
+
+            _enforce_otp_generation_limits("register", data.email, ip_address)
+            otp_code = issue_otp(
+                session,
+                user,
+                EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
+                RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
+                RATE_LIMIT_EMAIL_VERIFICATION_COOLDOWN_MINUTES,
             )
-            user.email = data.email
-            session.add(user)
-        session.flush()
-
-        otp_code = _issue_otp(
-            session,
-            user,
-            EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
-            RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
-            RATE_LIMIT_EMAIL_VERIFICATION_COOLDOWN_MINUTES,
-        )
-        pending_token = create_pending_verification_token(user.id)
-        session.commit()
-        send_registration_otp(data.email, otp_code)
-        return PendingAuthResponse(tempToken=pending_token)
+            pending_token = create_pending_verification_token(user.id)
+            session.commit()
+            send_registration_otp(data.email, otp_code)
+            return PendingAuthResponse(tempToken=pending_token)
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="An account with this email already exists.") from None
     except HTTPException:
-        session.rollback()
         raise
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(status_code=409, detail="An account with this email already exists.") from None
     except Exception:
         session.rollback()
         logger.exception("Failed to register user")
@@ -232,15 +118,15 @@ def handle_verify_registration_otp(
 ) -> tuple[AuthResponse, str]:
     session = get_session()
     try:
-        user = _require_pending_user(session, pending_token)
+        user = require_pending_user(session, pending_token)
         if user.email_verified:
-            result = _issue_login(session, user, device_info, ip_address)
+            result = issue_login(session, user, device_info, ip_address)
             session.commit()
             return result
 
-        _verify_otp(session, user, otp, RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS)
+        verify_otp(session, user, otp, RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS)
         user.email_verified = True
-        result = _issue_login(session, user, device_info, ip_address)
+        result = issue_login(session, user, device_info, ip_address)
         session.commit()
         return result
     except HTTPException:
@@ -253,14 +139,15 @@ def handle_verify_registration_otp(
         session.close()
 
 
-def handle_resend_otp(pending_token: str) -> PendingAuthResponse:
+def handle_resend_otp(pending_token: str, ip_address: str | None) -> PendingAuthResponse:
     session = get_session()
     try:
-        user = _require_pending_user(session, pending_token)
+        user = require_pending_user(session, pending_token)
         if user.email_verified:
             raise HTTPException(status_code=409, detail="This account is already verified.")
 
-        otp_code = _issue_otp(
+        _enforce_otp_generation_limits("register", user.email, ip_address)
+        otp_code = issue_otp(
             session,
             user,
             EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES,
@@ -272,7 +159,6 @@ def handle_resend_otp(pending_token: str) -> PendingAuthResponse:
         send_registration_otp(user.email, otp_code)
         return PendingAuthResponse(tempToken=new_pending_token)
     except HTTPException:
-        session.rollback()
         raise
     except Exception:
         session.rollback()
@@ -286,7 +172,7 @@ def handle_login(
     email: str, password: str, device_info: str | None, ip_address: str | None
 ) -> tuple[AuthResponse, str]:
     if ip_address:
-        check_ip_rate_limit(f"login:{ip_address}", RATE_LIMIT_LOGIN_IP_MAX_ATTEMPTS, RATE_LIMIT_LOGIN_IP_WINDOW_SECONDS)
+        RateLimits.auth.LOGIN_IP.check(f"login:{ip_address}")
 
     session = get_session()
     try:
@@ -294,9 +180,7 @@ def handle_login(
 
         if not user or not user.active:
             raise HTTPException(status_code=401, detail=INVALID_LOGIN_DETAIL)
-        # Same generic message whether locked or not - revealing lockout state
-        # distinctly would tell an attacker an account exists just from
-        # hitting the endpoint, no password knowledge required.
+        # Same message whether locked or not - avoids leaking account existence.
         if user.locked_until and user.locked_until > datetime.utcnow():
             raise HTTPException(status_code=401, detail=INVALID_LOGIN_DETAIL)
 
@@ -311,10 +195,7 @@ def handle_login(
         user.locked_until = None
 
         if not user.email_verified:
-            # Credentials are correct but the account is unverified - hand back
-            # a fresh pending token so the frontend can resume the same OTP
-            # verification flow used at signup, without a new OTP being sent
-            # unless the user explicitly asks to resend.
+            # Correct password, unverified - resume signup's OTP flow, no auto-resend.
             pending_token = create_pending_verification_token(user.id)
             session.commit()
             raise HTTPException(
@@ -324,7 +205,7 @@ def handle_login(
                     "data": {"tempToken": pending_token},
                 },
             )
-        result = _issue_login(session, user, device_info, ip_address)
+        result = issue_login(session, user, device_info, ip_address)
         session.commit()
         return result
     except HTTPException:
@@ -339,9 +220,7 @@ def handle_login(
 
 def handle_send_login_otp(email: str, ip_address: str | None) -> PendingAuthResponse:
     if ip_address:
-        check_ip_rate_limit(
-            f"login_otp:{ip_address}", RATE_LIMIT_LOGIN_OTP_IP_MAX_ATTEMPTS, RATE_LIMIT_LOGIN_OTP_IP_WINDOW_SECONDS
-        )
+        RateLimits.auth.LOGIN_OTP_IP.check(f"login_otp:{ip_address}")
 
     session = get_session()
     try:
@@ -349,7 +228,8 @@ def handle_send_login_otp(email: str, ip_address: str | None) -> PendingAuthResp
         if not user or not user.active or not user.email_verified:
             raise HTTPException(status_code=401, detail="Invalid email or account not found.")
 
-        otp_code = _issue_otp(
+        _enforce_otp_generation_limits("login", email, ip_address)
+        otp_code = issue_otp(
             session,
             user,
             LOGIN_OTP_EXPIRY_MINUTES,
@@ -361,7 +241,6 @@ def handle_send_login_otp(email: str, ip_address: str | None) -> PendingAuthResp
         send_login_otp(user.email, otp_code)
         return PendingAuthResponse(tempToken=pending_token)
     except HTTPException:
-        session.rollback()
         raise
     except Exception:
         session.rollback()
@@ -384,8 +263,8 @@ def handle_verify_login_otp(
         if not user or not user.active:
             raise HTTPException(status_code=401, detail=INVALID_OTP_LOGIN_SESSION_DETAIL)
 
-        _verify_otp(session, user, otp, RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS)
-        result = _issue_login(session, user, device_info, ip_address)
+        verify_otp(session, user, otp, RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS)
+        result = issue_login(session, user, device_info, ip_address)
         session.commit()
         return result
     except HTTPException:
@@ -400,17 +279,12 @@ def handle_verify_login_otp(
 
 def handle_forgot_password(email: str, ip_address: str | None) -> None:
     if ip_address:
-        check_ip_rate_limit(
-            f"forgot_password:{ip_address}",
-            RATE_LIMIT_FORGOT_PASSWORD_IP_MAX_ATTEMPTS,
-            RATE_LIMIT_FORGOT_PASSWORD_IP_WINDOW_SECONDS,
-        )
+        RateLimits.auth.FORGOT_PASSWORD_IP.check(f"forgot_password:{ip_address}")
 
     session = get_session()
     try:
         user = session.query(User).filter(User.email_hash == hash_email(email)).first()
-        # Always behave the same whether or not the account exists, to avoid
-        # leaking which emails are registered.
+        # Same response either way - avoids leaking which emails are registered.
         if user and user.active:
             if (
                 user.reset_requested_at
@@ -424,6 +298,8 @@ def handle_forgot_password(email: str, ip_address: str | None) -> None:
             session.commit()
             reset_link = f"{get_settings().services.frontend_base_url}/reset-password?token={raw_token}"
             send_password_reset_link(user.email, reset_link)
+    except HTTPException:
+        raise
     except Exception:
         session.rollback()
         logger.exception("Failed to process forgot-password request")
@@ -446,7 +322,6 @@ def handle_reset_password(token: str, new_password: str) -> None:
         user.reset_token_expire_at = None
         session.commit()
     except HTTPException:
-        session.rollback()
         raise
     except Exception:
         session.rollback()
@@ -465,8 +340,7 @@ def handle_refresh(raw_token: str, device_info: str | None, ip_address: str | No
             raise HTTPException(status_code=401, detail=INVALID_REFRESH_DETAIL)
 
         if existing.revoked_at is not None:
-            # Reuse of an already-rotated-out token - likely theft. Revoke
-            # every other active session for this user as a precaution.
+            # Reuse of an already-rotated token = likely theft; revoke every session.
             session.query(Session).filter(
                 Session.user_id == existing.user_id, Session.revoked_at.is_(None)
             ).update({"revoked_at": datetime.utcnow()})
@@ -481,11 +355,10 @@ def handle_refresh(raw_token: str, device_info: str | None, ip_address: str | No
             raise HTTPException(status_code=401, detail=INVALID_REFRESH_DETAIL)
 
         existing.revoked_at = datetime.utcnow()
-        result = _issue_login(session, user, device_info, ip_address)
+        result = issue_login(session, user, device_info, ip_address)
         session.commit()
         return result
     except HTTPException:
-        session.rollback()
         raise
     except Exception:
         session.rollback()

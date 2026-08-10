@@ -4,6 +4,7 @@ from .entitlement import Entitlement, EntitlementSource, EntitlementStatus
 from .inquiries import SupportMessage, TopicRequest
 from .invoice import Invoice
 from .order import Order, OrderItem, OrderStatus
+from .payment import Payment, PaymentStatus
 from .session import Session
 from .transcript import Transcript
 from .user import User, UserRole
@@ -24,6 +25,8 @@ __all__ = [
     "OrderItem",
     "OrderStatus",
     "Invoice",
+    "Payment",
+    "PaymentStatus",
     "SupportMessage",
     "TopicRequest",
 ]

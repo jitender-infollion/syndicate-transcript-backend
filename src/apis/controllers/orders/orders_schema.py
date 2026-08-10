@@ -7,8 +7,7 @@ OrderStatusLiteral = Literal["created", "paid", "failed"]
 
 
 class CreateOrderRequest(BaseModel):
-    # amount/currency are accepted for schema validation only - the server
-    # always recomputes the real total from Transcript.price and ignores these.
+    # amount/currency are unused - the server recomputes the real total.
     amount: int
     currency: str
     transcriptIds: list[int]

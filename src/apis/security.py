@@ -36,10 +36,7 @@ def create_access_token(*, user_id: int, user_name: str, email: str) -> str:
 
 
 def decode_access_token(token: str) -> dict | None:
-    """Decode a Bearer token, trying this service's own secret first, then any
-    additionally trusted secrets (e.g. tokens issued by the main Infollion
-    platform during the SSO handoff). Returns None if the token is invalid or
-    expired under every configured secret."""
+    # Tries this service's own secret, then any trusted secrets (e.g. Infollion SSO).
     settings = get_settings()
     secrets_to_try = [settings.auth.jwt_secret, *settings.auth.trusted_jwt_secrets]
     for secret in secrets_to_try:
@@ -50,57 +47,45 @@ def decode_access_token(token: str) -> dict | None:
     return None
 
 
-def create_pending_verification_token(user_id: int) -> str:
-    """A short-lived token that stands in for a real access token while an
-    account is unverified. Carries only user_id (no name/email claims) so it
-    can't be mistaken for a real access token by decode_access_token, since
-    JWT_ALGORITHM/secret are shared but the claim shape differs."""
+def _create_purpose_token(*, purpose: str, expiry_minutes: int, user_id: int) -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)
     payload = {
-        "purpose": PENDING_VERIFICATION_PURPOSE,
+        "purpose": purpose,
         "user_id": str(user_id),
         "iat": now,
-        "exp": now + timedelta(minutes=PENDING_VERIFICATION_EXPIRY_MINUTES),
+        "exp": now + timedelta(minutes=expiry_minutes),
     }
     return jwt.encode(payload, settings.auth.jwt_secret, algorithm=JWT_ALGORITHM)
+
+
+def _decode_purpose_token(token: str, *, purpose: str) -> int | None:
+    settings = get_settings()
+    try:
+        payload = jwt.decode(token, settings.auth.jwt_secret, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("purpose") != purpose:
+        return None
+    user_id = payload.get("user_id")
+    return int(user_id) if user_id else None
+
+
+def create_pending_verification_token(user_id: int) -> str:
+    # Carries only user_id, so decode_access_token can't mistake it for a real token.
+    return _create_purpose_token(
+        purpose=PENDING_VERIFICATION_PURPOSE, expiry_minutes=PENDING_VERIFICATION_EXPIRY_MINUTES, user_id=user_id
+    )
 
 
 def decode_pending_verification_token(token: str) -> int | None:
-    settings = get_settings()
-    try:
-        payload = jwt.decode(token, settings.auth.jwt_secret, algorithms=[JWT_ALGORITHM])
-    except JWTError:
-        return None
-    if payload.get("purpose") != PENDING_VERIFICATION_PURPOSE:
-        return None
-    user_id = payload.get("user_id")
-    return int(user_id) if user_id else None
+    return _decode_purpose_token(token, purpose=PENDING_VERIFICATION_PURPOSE)
 
 
 def create_otp_login_token(user_id: int) -> str:
-    """A short-lived token identifying who an OTP-login OTP was issued to.
-    Uses its own purpose (distinct from PENDING_VERIFICATION_PURPOSE) so it
-    can't be replayed against the email-verification endpoints, which skip
-    OTP checks entirely for already-verified users."""
-    settings = get_settings()
-    now = datetime.now(timezone.utc)
-    payload = {
-        "purpose": OTP_LOGIN_PURPOSE,
-        "user_id": str(user_id),
-        "iat": now,
-        "exp": now + timedelta(minutes=OTP_LOGIN_EXPIRY_MINUTES),
-    }
-    return jwt.encode(payload, settings.auth.jwt_secret, algorithm=JWT_ALGORITHM)
+    # Own purpose so it can't be replayed against the email-verification endpoints.
+    return _create_purpose_token(purpose=OTP_LOGIN_PURPOSE, expiry_minutes=OTP_LOGIN_EXPIRY_MINUTES, user_id=user_id)
 
 
 def decode_otp_login_token(token: str) -> int | None:
-    settings = get_settings()
-    try:
-        payload = jwt.decode(token, settings.auth.jwt_secret, algorithms=[JWT_ALGORITHM])
-    except JWTError:
-        return None
-    if payload.get("purpose") != OTP_LOGIN_PURPOSE:
-        return None
-    user_id = payload.get("user_id")
-    return int(user_id) if user_id else None
+    return _decode_purpose_token(token, purpose=OTP_LOGIN_PURPOSE)

@@ -1,5 +1,8 @@
 import logging
+from contextlib import contextmanager
+from typing import Iterator
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
@@ -26,3 +29,21 @@ def get_session() -> Session:
     if _SessionLocal is None:
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
     return _SessionLocal()
+
+
+@contextmanager
+def session_scope(error_message: str = "Unhandled database error") -> Iterator[Session]:
+    # Standardizes rollback/close around a session; callers still commit() themselves.
+    # Not suited for call sites that need to swallow errors instead of raising (e.g. logout).
+    session = get_session()
+    try:
+        yield session
+    except HTTPException:
+        session.rollback()
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception(error_message)
+        raise HTTPException(status_code=500, detail="Internal error") from None
+    finally:
+        session.close()

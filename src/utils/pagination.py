@@ -36,5 +36,6 @@ def paginate(query: SAQuery, params: PaginationParams) -> tuple[list, int]:
 
 
 def build_page(items: list[T], total: int, params: PaginationParams) -> Page:
-    total_pages = (total + params.limit - 1) // params.limit if params.limit else 0
+    # params.limit is always >= 1 (enforced by Query/Field), so no zero-division guard needed.
+    total_pages = (total + params.limit - 1) // params.limit
     return Page(items=items, meta=PageMeta(page=params.page, limit=params.limit, total=total, totalPages=total_pages))

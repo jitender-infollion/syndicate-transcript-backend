@@ -15,12 +15,7 @@ def get_current_user_id(request: Request) -> int:
 
 
 def get_current_user_id_optional(request: Request) -> int | None:
-    """Like get_current_user_id, but None instead of a 401 when there's no valid token.
-
-    For soft-auth routes (e.g. cart) that must work for both guests and
-    logged-in users - the JWT middleware only ever sets request.state.user_id
-    when a valid Bearer token was actually presented on those paths.
-    """
+    # Like get_current_user_id, but None instead of 401 - for soft-auth routes (e.g. cart).
     user_id = getattr(request.state, "user_id", None)
     return int(user_id) if user_id else None
 

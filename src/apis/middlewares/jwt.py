@@ -4,42 +4,25 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from apis.security import decode_access_token
+from config import get_settings
 from utils.response import error_response
 
-# Transcript detail has a dynamic id segment, so it can't sit in the exact-
-# match UNPROTECTED_PATHS set like /api/transcripts and /api/transcripts/
-# domains do. Fully public (no identity needed at all - the detail response
-# no longer varies by caller), matched with a regex instead. Matches only a
-# single extra path segment, so /api/transcripts/me/purchased and
-# /api/transcripts/{id}/view|download - which must stay hard-protected -
-# don't accidentally qualify.
+# Per-request auth gate: public, soft-auth, or requires login.
+
+# Dynamic id - scoped to one segment so /me/purchased, /{id}/view|download stay protected.
 PUBLIC_PATH_RE = re.compile(r"^/api/transcripts/[^/]+$")
 
-# Payment gateway webhooks are server-to-server calls from the gateway (e.g.
-# Razorpay) - they never carry a Bearer token. Authenticity is verified inside
-# the route itself via the gateway's own signature header, not a JWT.
-WEBHOOK_PATH_RE = re.compile(r"^/api/orders/webhook/[^/]+$")
+WEBHOOK_PATH_RE = re.compile(r"^/api/orders/webhook/[^/]+$")  # verified via gateway signature instead
 
-# Cart add/view/remove must work for both anonymous and logged-in callers, so
-# these paths never 401 - but if a valid Bearer token IS present, it's still
-# decoded and attached, so routes can tell a guest from a logged-in user.
-# /api/cart/merge is deliberately NOT included here: merging into "your
-# account" requires a real logged-in identity, so it falls through to the
-# hard-auth branch below like every other protected route.
-#
-# Support/topic-request submissions are public (anyone can submit, no account
-# needed) but still opportunistically record who it was if the submitter
-# happened to be logged in - unlike UNPROTECTED_PATHS, soft-auth still decodes
-# a Bearer token when one is present, it just never requires one.
+# Bearer token decoded if present, but not required. /api/cart/merge excluded.
 SOFT_AUTH_PATHS = {"/api/cart", "/api/support", "/api/topics/request"}
 SOFT_AUTH_PATH_RE = re.compile(r"^/api/cart/items(/[^/]+)?$")
 
+_DOCS_PATHS = {"/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"} if get_settings().services.enable_docs else set()
+
 UNPROTECTED_PATHS = {
     "/health",
-    "/docs",
-    "/docs/oauth2-redirect",
-    "/redoc",
-    "/openapi.json",
+    *_DOCS_PATHS,
     "/api/auth/register",
     "/api/auth/register/verify-otp",
     "/api/auth/register/resend-otp",

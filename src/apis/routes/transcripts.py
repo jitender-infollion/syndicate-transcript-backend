@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 
 from apis.controllers.transcripts import transcripts_controller
 from apis.controllers.transcripts.transcripts_schema import TranscriptFilterRequest
 from apis.dependencies import get_current_user_id
 from utils.pagination import PaginationParams
-from utils.response import success_response
+from utils.response import pdf_response, success_response
 
 from .paths import P
 
@@ -60,11 +60,7 @@ def download_transcript(transcript_id: int, user_id: int = Depends(get_current_u
     result = transcripts_controller.download_transcript(user_id, transcript_id)
     if result.redirect_url:
         return RedirectResponse(url=result.redirect_url, status_code=307)
-    return Response(
-        content=result.pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="transcript-{transcript_id}.pdf"'},
-    )
+    return pdf_response(result.pdf_bytes, f"transcript-{transcript_id}.pdf", disposition="attachment")
 
 
 @router.get(P.transcripts.FULL_TEXT)

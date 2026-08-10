@@ -14,13 +14,15 @@ _jinja_env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=sel
 
 OTP_TTL_MINUTES = 10
 
+# Publicly-reachable URL, not derived from frontend_base_url (unreachable from an email client in dev).
+_LOGO_URL = "https://www.infollion.com/imported/logo-new.png"
+
 
 def _render_otp_email(title: str, heading: str, description: str, otp: str) -> str:
-    frontend_base_url = get_settings().services.frontend_base_url
     return _jinja_env.get_template("otp_code.html").render(
         title=title,
         render_logo=True,
-        logo_url=f"{frontend_base_url}/assets/infollion_logo_200x100.png",
+        logo_url=_LOGO_URL,
         heading=heading,
         description=description,
         code=otp,
@@ -105,10 +107,9 @@ def send_password_reset_link(email: str, reset_link: str) -> None:
 
 
 def send_invoice_email(email: str, name: str | None, invoice_number: str, pdf_bytes: bytes) -> None:
-    frontend_base_url = get_settings().services.frontend_base_url
     html = _jinja_env.get_template("invoice_email.html").render(
         title="Your Infollion receipt",
-        logo_url=f"{frontend_base_url}/assets/infollion_logo_200x100.png",
+        logo_url=_LOGO_URL,
         name=name,
         invoice_number=invoice_number,
     )

@@ -8,6 +8,9 @@ _TOPICS = "/api/topics"
 
 
 class P:
+    class system:
+        HEALTH = "/health"
+
     class auth:
         BASE = _AUTH
         REGISTER = "/register"

@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, Request
 
 from apis.controllers.orders.orders_controller import OrdersController
 from apis.controllers.orders.orders_schema import CreateOrderRequest, VerifyPaymentRequest
 from apis.dependencies import get_current_user_id, get_orders_controller
-from utils.response import success_response
+from utils.response import pdf_response, success_response
 
 from .paths import P
 
@@ -57,11 +57,7 @@ def get_receipt(
     controller: OrdersController = Depends(get_orders_controller),
 ):
     pdf_bytes = controller.get_receipt_pdf(user_id, order_id)
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="receipt-{order_id}.pdf"'},
-    )
+    return pdf_response(pdf_bytes, f"receipt-{order_id}.pdf")
 
 
 @router.post(P.orders.WEBHOOK)
@@ -70,10 +66,8 @@ async def payment_webhook(
     request: Request,
     controller: OrdersController = Depends(get_orders_controller),
 ):
-    if gateway != "razorpay":
-        raise HTTPException(status_code=404, detail="Unknown payment gateway")
     raw_body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
     event_id = request.headers.get("X-Razorpay-Event-Id", "")
-    controller.handle_webhook(raw_body, signature, event_id)
+    controller.handle_webhook(gateway, raw_body, signature, event_id)
     return success_response(data=None)

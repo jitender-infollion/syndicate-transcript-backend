@@ -29,5 +29,5 @@ class OrdersController:
     def get_receipt_pdf(self, user_id: int, order_id: int) -> bytes:
         return self.handler.get_receipt_pdf(user_id, order_id)
 
-    def handle_webhook(self, raw_body: bytes, signature: str, event_id: str) -> None:
-        self.handler.handle_webhook(raw_body, signature, event_id)
+    def handle_webhook(self, gateway: str, raw_body: bytes, signature: str, event_id: str) -> None:
+        self.handler.handle_webhook(gateway, raw_body, signature, event_id)

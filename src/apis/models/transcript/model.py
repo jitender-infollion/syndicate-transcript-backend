@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from services.database.postgres.connection import Base
 
 
+# final_transcript is never served as-is - a fresh signed URL is minted per request.
 class Transcript(Base):
     __tablename__ = "transcripts"
     __table_args__ = (
@@ -16,15 +17,9 @@ class Transcript(Base):
     id = Column(Integer, primary_key=True, index=True)
     author_id = Column(Integer, ForeignKey("authors.id"), nullable=False, index=True)
     topic = Column(String, nullable=True)
-    # A transcript can belong to multiple domains/geographies - matched via
-    # array containment (e.g. domain @> ARRAY['Healthcare']), not equality.
     domain = Column(ARRAY(String), nullable=True)
     geography = Column(ARRAY(String), nullable=True)
     preview = Column(Text, nullable=True)
-    # {"fileName": "<original file name>", "url": "<permanent S3 object url/key>"}.
-    # Never served as-is - view/download endpoints mint a fresh signed URL from
-    # this reference on every request, so the stored value itself is never
-    # exposed to the client.
     final_transcript = Column(JSON, nullable=True)
     key_insight = Column(ARRAY(String), nullable=True)
     published_at = Column(DateTime, nullable=True)

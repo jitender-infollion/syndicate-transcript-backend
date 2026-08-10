@@ -37,8 +37,8 @@ def verify_registration_otp(
     return handle_verify_registration_otp(data.tempToken, data.otp, device_info, ip_address)
 
 
-def resend_otp(data: ResendOtpRequest) -> PendingAuthResponse:
-    return handle_resend_otp(data.tempToken)
+def resend_otp(data: ResendOtpRequest, ip_address: str | None) -> PendingAuthResponse:
+    return handle_resend_otp(data.tempToken, ip_address)
 
 
 def login(data: LoginRequest, device_info: str | None, ip_address: str | None) -> tuple[AuthResponse, str]:

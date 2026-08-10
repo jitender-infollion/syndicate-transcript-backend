@@ -31,6 +31,7 @@ class _FakeGateway:
             "event_type": data["event"],
             "gateway_order_id": data["gateway_order_id"],
             "gateway_payment_id": data.get("gateway_payment_id"),
+            "raw_response": {"id": data.get("gateway_payment_id"), "order_id": data["gateway_order_id"]},
         }
 
 
@@ -112,6 +113,111 @@ def test_create_order_same_idempotency_key_returns_same_order(client, monkeypatc
 
     orders_resp = client.get("/api/orders", headers=_auth_headers(token))
     assert len(orders_resp.json()["data"]) == 1
+
+
+def test_create_order_same_idempotency_key_across_users_does_not_collide(client, monkeypatch, engine):
+    # Regression test: idempotency_key used to be globally unique, so two
+    # different users reusing the same literal key would crash the second
+    # user's checkout with an unhandled IntegrityError/AttributeError. Now
+    # scoped to (user_id, idempotency_key), so this must just work.
+    _use_fake_gateway(monkeypatch)
+    token_a, _ = _signup_and_verify(client, monkeypatch, email="collide-a@example.com")
+    token_b, _ = _signup_and_verify(client, monkeypatch, email="collide-b@example.com")
+    author_id = _seed_author(engine)
+    transcript_a = _seed_transcript(engine, author_id, topic="Topic A")
+    transcript_b = _seed_transcript(engine, author_id, topic="Topic B")
+    shared_key = str(uuid.uuid4())
+
+    resp_a = _create_order(client, token_a, [transcript_a], idempotency_key=shared_key)
+    resp_b = _create_order(client, token_b, [transcript_b], idempotency_key=shared_key)
+
+    assert resp_a.status_code == 200, resp_a.text
+    assert resp_b.status_code == 200, resp_b.text
+    assert resp_a.json()["data"]["orderId"] != resp_b.json()["data"]["orderId"]
+    assert resp_a.json()["data"]["transcriptIds"] == [transcript_a]
+    assert resp_b.json()["data"]["transcriptIds"] == [transcript_b]
+
+
+def test_create_order_reuses_open_order_for_same_items_with_different_idempotency_key(client, monkeypatch, engine):
+    # Regression test: the frontend used to mint a fresh idempotency key on
+    # every page load (component state, not persisted) - a page refresh mid
+    # checkout followed by clicking Pay again sent a different key for the
+    # exact same cart, creating a second Order + a second Razorpay order for
+    # items the user hadn't paid for yet. The backend must recognize "same
+    # user, same items, still unpaid" and reuse the existing order regardless
+    # of the idempotency key sent.
+    _use_fake_gateway(monkeypatch)
+    token, _ = _signup_and_verify(client, monkeypatch)
+    author_id = _seed_author(engine)
+    transcript_id = _seed_transcript(engine, author_id)
+
+    first = _create_order(client, token, [transcript_id])
+    second = _create_order(client, token, [transcript_id])  # fresh idempotency_key, same items
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["data"]["orderId"] == second.json()["data"]["orderId"]
+    assert first.json()["data"]["razorpayOrderId"] == second.json()["data"]["razorpayOrderId"]
+
+    orders_resp = client.get("/api/orders", headers=_auth_headers(token))
+    assert len(orders_resp.json()["data"]) == 1
+
+
+def test_create_order_does_not_reuse_open_order_for_different_items(client, monkeypatch, engine):
+    _use_fake_gateway(monkeypatch)
+    token, _ = _signup_and_verify(client, monkeypatch)
+    author_id = _seed_author(engine)
+    t1 = _seed_transcript(engine, author_id, topic="Topic A")
+    t2 = _seed_transcript(engine, author_id, topic="Topic B")
+
+    first = _create_order(client, token, [t1])
+    second = _create_order(client, token, [t2])
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["data"]["orderId"] != second.json()["data"]["orderId"]
+
+    orders_resp = client.get("/api/orders", headers=_auth_headers(token))
+    assert len(orders_resp.json()["data"]) == 2
+
+
+def test_create_order_does_not_reuse_paid_order_for_same_items(client, monkeypatch, engine):
+    # A previously paid order for the same items must never be "reused" -
+    # only still-open (created) orders are deduped this way.
+    _use_fake_gateway(monkeypatch)
+    token, _ = _signup_and_verify(client, monkeypatch)
+    author_id = _seed_author(engine)
+    transcript_id = _seed_transcript(engine, author_id)
+
+    create_resp = _create_order(client, token, [transcript_id])
+    razorpay_order_id = create_resp.json()["data"]["razorpayOrderId"]
+    _verify(client, token, razorpay_order_id)
+
+    resp = _create_order(client, token, [transcript_id])
+    assert resp.status_code == 400, resp.text
+
+
+def test_create_order_is_rate_limited_per_user_not_globally(client, monkeypatch, engine):
+    from utils.rate_limiter import RateLimits
+
+    _use_fake_gateway(monkeypatch)
+    token_a, _ = _signup_and_verify(client, monkeypatch, email="ratelimit-orders-a@example.com")
+    token_b, _ = _signup_and_verify(client, monkeypatch, email="ratelimit-orders-b@example.com")
+    author_id = _seed_author(engine)
+    transcript_id = _seed_transcript(engine, author_id)
+
+    for _ in range(RateLimits.orders.CREATE_ORDER.max_attempts):
+        resp = _create_order(client, token_a, [transcript_id])
+        assert resp.status_code == 200, resp.text
+
+    # User A has now hit their own limit...
+    resp = _create_order(client, token_a, [transcript_id])
+    assert resp.status_code == 429, resp.text
+
+    # ...but a completely different user is unaffected - the counter is keyed
+    # by user_id, not shared/global.
+    resp = _create_order(client, token_b, [transcript_id])
+    assert resp.status_code == 200, resp.text
 
 
 def test_create_order_rejects_inactive_or_missing_transcript(client, monkeypatch):
@@ -298,4 +404,24 @@ def test_receipt_returns_pdf_for_paid_order(client, monkeypatch, engine):
     resp = client.get(f"/api/orders/{order_id}/receipt", headers=_auth_headers(token))
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content[:4] == b"%PDF"
+
+
+def test_receipt_survives_malformed_markup_in_user_name(client, monkeypatch, engine):
+    # Regression test: an unclosed/mismatched tag in the user's name used to
+    # crash ReportLab's Paragraph parser with an unhandled ValueError - see
+    # receipt_generator.py's escape() call and get_receipt_pdf's except Exception.
+    _use_fake_gateway(monkeypatch)
+    token, _ = _signup_and_verify(client, monkeypatch, name="Bob <b>unclosed bold")
+    author_id = _seed_author(engine)
+    transcript_id = _seed_transcript(engine, author_id)
+
+    create_resp = _create_order(client, token, [transcript_id])
+    razorpay_order_id = create_resp.json()["data"]["razorpayOrderId"]
+    order_id = create_resp.json()["data"]["orderId"]
+
+    _verify(client, token, razorpay_order_id)
+
+    resp = client.get(f"/api/orders/{order_id}/receipt", headers=_auth_headers(token))
+    assert resp.status_code == 200, resp.text
     assert resp.content[:4] == b"%PDF"

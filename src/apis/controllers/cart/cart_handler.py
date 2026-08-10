@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
-from apis.controllers.transcripts.transcripts_handler import _SLIM_COLUMNS, _row_to_list_item
+from apis.controllers.transcripts.transcripts_helper import SLIM_TRANSCRIPT_COLUMNS, row_to_transcript_list_item
 from apis.models.author import Author
 from apis.models.cart import Cart, CartItem, CartStatus
 from apis.models.transcript import Transcript
@@ -40,14 +40,14 @@ def _cart_response(session, cart: Cart | None) -> CartResponse:
     if cart is None:
         return CartResponse(items=[])
     rows = (
-        session.query(*_SLIM_COLUMNS)
+        session.query(*SLIM_TRANSCRIPT_COLUMNS)
         .join(Author, Transcript.author_id == Author.id)
         .join(CartItem, CartItem.transcript_id == Transcript.id)
         .filter(CartItem.cart_id == cart.id)
         .order_by(CartItem.created_at.desc())
         .all()
     )
-    return CartResponse(items=[_row_to_list_item(row) for row in rows])
+    return CartResponse(items=[row_to_transcript_list_item(row) for row in rows])
 
 
 def handle_get_cart(user_id: int | None, guest_id: str | None) -> CartResponse:
@@ -55,7 +55,10 @@ def handle_get_cart(user_id: int | None, guest_id: str | None) -> CartResponse:
     try:
         cart = _get_cart(session, user_id, guest_id, create=False)
         return _cart_response(session, cart)
+    except HTTPException:
+        raise
     except Exception:
+        session.rollback()
         logger.exception("Failed to fetch cart")
         raise HTTPException(status_code=500, detail="Internal error") from None
     finally:
@@ -85,7 +88,6 @@ def handle_add_item(user_id: int | None, guest_id: str | None, transcript_id: in
             session.rollback()
         return _cart_response(session, cart)
     except HTTPException:
-        session.rollback()
         raise
     except Exception:
         session.rollback()
@@ -105,6 +107,8 @@ def handle_remove_item(user_id: int | None, guest_id: str | None, transcript_id:
             ).delete()
             session.commit()
         return _cart_response(session, cart)
+    except HTTPException:
+        raise
     except Exception:
         session.rollback()
         logger.exception("Failed to remove cart item")
@@ -121,6 +125,8 @@ def handle_clear_cart(user_id: int | None, guest_id: str | None) -> CartResponse
             session.query(CartItem).filter(CartItem.cart_id == cart.id).delete()
             session.commit()
         return CartResponse(items=[])
+    except HTTPException:
+        raise
     except Exception:
         session.rollback()
         logger.exception("Failed to clear cart")
@@ -136,8 +142,7 @@ def handle_merge_cart(user_id: int, guest_id: str | None, item_ids: list[int]) -
         guest_cart = _get_cart(session, None, guest_id, create=False) if guest_id else None
 
         if user_cart is None and guest_cart is not None:
-            # No cart of their own yet - re-point the guest cart at the user instead of
-            # copying rows into a freshly created one (keeps this a single UPDATE).
+            # Re-point the guest cart at the user instead of copying rows (single UPDATE).
             guest_cart.user_id = user_id
             guest_cart.guest_id = None
             guest_cart.expires_at = None
@@ -172,6 +177,8 @@ def handle_merge_cart(user_id: int, guest_id: str | None, item_ids: list[int]) -
 
         session.commit()
         return _cart_response(session, user_cart) if user_cart is not None else CartResponse(items=[])
+    except HTTPException:
+        raise
     except Exception:
         session.rollback()
         logger.exception("Failed to merge cart")

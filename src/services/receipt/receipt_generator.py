@@ -1,30 +1,21 @@
-import io
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, Spacer, Table, TableStyle
 
 from config import get_settings
+from services.pdf import BODY_TEXT_COLOR, build_pdf, make_document
 
 _LOGO_PATH = Path(__file__).parent / "assets" / "infollion_logo_square.png"
 
 
 def generate_receipt_pdf(order, item_rows, user, invoice_number: str) -> bytes:
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        title=f"Receipt {order.id}",
-        leftMargin=0.6 * inch,
-        rightMargin=0.6 * inch,
-        topMargin=0.6 * inch,
-        bottomMargin=0.6 * inch,
-    )
+    doc, buffer = make_document(f"Receipt {order.id}", margin_inches=0.6)
     styles = getSampleStyleSheet()
-    body = ParagraphStyle("body", parent=styles["Normal"], fontSize=9, leading=14, textColor=colors.HexColor("#374151"))
+    body = ParagraphStyle("body", parent=styles["Normal"], fontSize=9, leading=14, textColor=BODY_TEXT_COLOR)
     section_heading = ParagraphStyle(
         "sectionHeading", parent=styles["Normal"], fontSize=9, leading=14, textColor=colors.HexColor("#111827"),
         fontName="Helvetica-Bold", spaceAfter=4,
@@ -63,16 +54,15 @@ def generate_receipt_pdf(order, item_rows, user, invoice_number: str) -> bytes:
     elements.append(header_table)
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Bill to
+    # User-controlled fields must be escaped - Paragraph parses its input as mini-XML.
     elements.append(Paragraph("BILL TO", section_heading))
     bill_lines = [user.name or "-", user.email]
     if user.company_name:
         bill_lines.append(user.company_name)
     for line in bill_lines:
-        elements.append(Paragraph(line, body))
+        elements.append(Paragraph(escape(line), body))
     elements.append(Spacer(1, 0.25 * inch))
 
-    # Items
     table_data = [["Description", "Qty", "Amount"]]
     for price, topic in item_rows:
         table_data.append([topic or "Untitled transcript", "1", f"{order.currency} {price}"])
@@ -112,9 +102,7 @@ def generate_receipt_pdf(order, item_rows, user, invoice_number: str) -> bytes:
     elements.append(totals_table)
     elements.append(Spacer(1, 0.3 * inch))
 
-    # License - "download transcript" is forward-looking copy: the download
-    # endpoint (transcripts_handler.get_transcript_access, mode="download")
-    # still returns 501 today, so this promises something not live yet.
+    # "Download transcript" is forward-looking - that endpoint still returns 501.
     elements.append(Paragraph("LICENSE", section_heading))
     for line in [
         "&bull; Full transcript view access",
@@ -129,5 +117,4 @@ def generate_receipt_pdf(order, item_rows, user, invoice_number: str) -> bytes:
         elements.append(Paragraph(f"Questions about this receipt? Contact {from_email}.", body))
     elements.append(Paragraph("<b>Thank you for your purchase!</b>", body))
 
-    doc.build(elements)
-    return buffer.getvalue()
+    return build_pdf(doc, buffer, elements)

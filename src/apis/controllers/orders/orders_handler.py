@@ -4,17 +4,19 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
-from apis.controllers.transcripts.transcripts_handler import _has_active_entitlement
+from apis.controllers.transcripts.transcripts_helper import has_active_entitlement
 from apis.models.invoice import Invoice
 from apis.models.order import Order, OrderItem, OrderStatus
+from apis.models.payment import Payment, PaymentStatus
 from apis.models.transcript import Transcript
 from apis.models.user import User
 from services.database.postgres.connection import get_session
 from services.email.email_service import send_invoice_email
 from services.payment import RazorpayService
 from services.receipt import generate_receipt_pdf
+from utils.rate_limiter import RateLimits
 
-from .helpers import transition_to_failed, transition_to_paid
+from .orders_helper import transition_to_failed, transition_to_paid
 from .orders_schema import CreateOrderResponse, OrderSummary, VerifyPaymentResponse
 
 logger = logging.getLogger(__name__)
@@ -28,9 +30,10 @@ class OrdersHandler:
         transcript_ids = [
             row[0] for row in session.query(OrderItem.transcript_id).filter(OrderItem.order_id == order.id).all()
         ]
+        payment = session.query(Payment).filter(Payment.order_id == order.id).first()
         return CreateOrderResponse(
             orderId=str(order.id),
-            razorpayOrderId=order.gateway_order_id,
+            razorpayOrderId=payment.provider_order_id,
             transcriptIds=transcript_ids,
             amount=order.amount,
             currency=order.currency,
@@ -38,6 +41,9 @@ class OrdersHandler:
         )
 
     def create_order(self, user_id: int, transcript_ids: list[int], idempotency_key: str) -> CreateOrderResponse:
+        # Keyed by user_id, not IP - each call is a real Razorpay API request.
+        RateLimits.orders.CREATE_ORDER.check(f"create_order:{user_id}")
+
         if not self.payment_service.settings.payment.is_configured:
             raise HTTPException(status_code=503, detail="Payments are not configured yet.")
         if not transcript_ids:
@@ -61,16 +67,32 @@ class OrdersHandler:
                 raise HTTPException(status_code=400, detail="One or more items are no longer available.")
 
             for transcript_id in unique_ids:
-                if _has_active_entitlement(session, user_id, transcript_id):
+                if has_active_entitlement(session, user_id, transcript_id):
                     raise HTTPException(status_code=400, detail="You already own one or more of these items.")
+
+            # Reuse an already-open order for the same items - guards against
+            # duplicate checkouts even with a different idempotency key (e.g. refresh).
+            target_id_set = set(unique_ids)
+            open_orders = (
+                session.query(Order)
+                .filter(Order.user_id == user_id, Order.status == OrderStatus.CREATED.value)
+                .order_by(Order.created_at.desc())
+                .all()
+            )
+            for candidate in open_orders:
+                candidate_id_set = {
+                    row[0]
+                    for row in session.query(OrderItem.transcript_id).filter(OrderItem.order_id == candidate.id).all()
+                }
+                if candidate_id_set == target_id_set:
+                    return self._existing_order_response(session, candidate)
 
             amount = sum(t.price for t in transcripts)
             currency = self.payment_service.currency
             receipt = f"order-{user_id}-{int(datetime.utcnow().timestamp())}"
 
-            # Razorpay wants the smallest currency unit (cents/paise) - amount
-            # here is whole units, same convention as transcripts.price.
-            gateway_order = self.payment_service.create_order(amount * 100, currency, receipt)
+            # amount is whole units here, matching transcripts.price - not Razorpay's usual paise.
+            gateway_order = self.payment_service.create_order(amount, currency, receipt)
             if gateway_order is None:
                 raise HTTPException(status_code=502, detail="Could not start payment. Please try again.")
 
@@ -79,12 +101,20 @@ class OrdersHandler:
                 status=OrderStatus.CREATED.value,
                 amount=amount,
                 currency=currency,
-                gateway="razorpay",
-                gateway_order_id=gateway_order["id"],
                 idempotency_key=idempotency_key,
             )
             session.add(order)
             session.flush()
+
+            session.add(
+                Payment(
+                    order_id=order.id,
+                    provider="razorpay",
+                    provider_order_id=gateway_order["id"],
+                    amount=amount,
+                    status=PaymentStatus.PENDING.value,
+                )
+            )
 
             for transcript in transcripts:
                 session.add(OrderItem(order_id=order.id, transcript_id=transcript.id, price=transcript.price))
@@ -92,8 +122,7 @@ class OrdersHandler:
             try:
                 session.commit()
             except IntegrityError:
-                # Concurrent request with the same idempotency key won the race -
-                # not an error, return that order instead of creating a duplicate.
+                # Concurrent request won the idempotency-key race - return that order.
                 session.rollback()
                 existing = (
                     session.query(Order)
@@ -104,14 +133,13 @@ class OrdersHandler:
 
             return CreateOrderResponse(
                 orderId=str(order.id),
-                razorpayOrderId=order.gateway_order_id,
+                razorpayOrderId=gateway_order["id"],
                 transcriptIds=unique_ids,
                 amount=amount,
                 currency=currency,
                 keyId=self.payment_service.settings.payment.razorpay_key_id,
             )
         except HTTPException:
-            session.rollback()
             raise
         except Exception:
             session.rollback()
@@ -131,8 +159,7 @@ class OrdersHandler:
         return rows, user
 
     def _email_invoice_best_effort(self, session, order: Order) -> None:
-        # Runs only after the paid-transition is already committed - a slow or
-        # failing email must never affect payment/entitlement correctness.
+        # Runs after the paid-transition is committed - email failure can't affect it.
         try:
             invoice = session.query(Invoice).filter(Invoice.order_id == order.id).first()
             if invoice is None:
@@ -148,22 +175,26 @@ class OrdersHandler:
     ) -> VerifyPaymentResponse:
         session = get_session()
         try:
-            order = (
-                session.query(Order)
-                .filter(Order.gateway_order_id == razorpay_order_id, Order.user_id == user_id)
+            result = (
+                session.query(Order, Payment)
+                .join(Payment, Payment.order_id == Order.id)
+                .filter(Payment.provider_order_id == razorpay_order_id, Order.user_id == user_id)
                 .first()
             )
-            if order is None:
+            if result is None:
                 raise HTTPException(status_code=404, detail="Order not found")
+            order, payment = result
 
             just_paid = False
             if order.status == OrderStatus.CREATED.value:
                 if self.payment_service.verify_payment_signature(
                     razorpay_order_id, razorpay_payment_id, razorpay_signature
                 ):
-                    just_paid = transition_to_paid(session, order, razorpay_payment_id)
+                    just_paid = transition_to_paid(
+                        session, order, payment, razorpay_payment_id, provider_signature=razorpay_signature
+                    )
                 else:
-                    transition_to_failed(session, order)
+                    transition_to_failed(session, order, payment)
                 session.commit()
 
             session.refresh(order)
@@ -171,7 +202,6 @@ class OrdersHandler:
                 self._email_invoice_best_effort(session, order)
             return VerifyPaymentResponse(orderId=str(order.id), status=order.status)
         except HTTPException:
-            session.rollback()
             raise
         except Exception:
             session.rollback()
@@ -180,7 +210,13 @@ class OrdersHandler:
         finally:
             session.close()
 
-    def handle_webhook(self, raw_body: bytes, signature: str, event_id: str) -> None:
+    def handle_webhook(self, gateway: str, raw_body: bytes, signature: str, event_id: str) -> None:
+        if gateway != "razorpay":
+            raise HTTPException(status_code=404, detail="Unknown payment gateway")
+
+        # An unset webhook secret makes signature checks trivially forgeable.
+        if not self.payment_service.settings.payment.is_configured:
+            raise HTTPException(status_code=503, detail="Payments are not configured yet.")
         if not self.payment_service.verify_webhook_signature(raw_body, signature):
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
@@ -190,30 +226,41 @@ class OrdersHandler:
 
         session = get_session()
         try:
-            order = session.query(Order).filter(Order.gateway_order_id == event["gateway_order_id"]).first()
-            if order is None:
+            result = (
+                session.query(Order, Payment)
+                .join(Payment, Payment.order_id == Order.id)
+                .filter(Payment.provider_order_id == event["gateway_order_id"])
+                .first()
+            )
+            if result is None:
                 logger.warning("Webhook received for unknown gateway order %s", event["gateway_order_id"])
                 return
+            order, payment = result
 
-            # Razorpay's documented idempotency check: a redelivered event id is
-            # a no-op before any status check even runs, not just relying on the
-            # 'created' state guard below.
-            if event_id and order.last_webhook_event_id == event_id:
+            # Redelivered event id is a no-op, checked before the status guard below.
+            if event_id and payment.webhook_event_id == event_id:
                 return
 
             just_paid = False
             if order.status == OrderStatus.CREATED.value:
                 if event["event_type"] == "payment.captured":
-                    just_paid = transition_to_paid(session, order, event["gateway_payment_id"])
+                    just_paid = transition_to_paid(
+                        session,
+                        order,
+                        payment,
+                        event["gateway_payment_id"],
+                    )
                 else:
-                    transition_to_failed(session, order)
+                    transition_to_failed(session, order, payment)
 
             if event_id:
-                order.last_webhook_event_id = event_id
+                session.query(Payment).filter(Payment.id == payment.id).update({"webhook_event_id": event_id})
             session.commit()
 
             if just_paid:
                 self._email_invoice_best_effort(session, order)
+        except HTTPException:
+            raise
         except Exception:
             session.rollback()
             logger.exception("Failed to process payment webhook")
@@ -246,6 +293,12 @@ class OrdersHandler:
                 )
                 for o in orders
             ]
+        except HTTPException:
+            raise
+        except Exception:
+            session.rollback()
+            logger.exception("Failed to list orders")
+            raise HTTPException(status_code=500, detail="Internal error") from None
         finally:
             session.close()
 
@@ -267,6 +320,10 @@ class OrdersHandler:
             )
         except HTTPException:
             raise
+        except Exception:
+            session.rollback()
+            logger.exception("Failed to get order")
+            raise HTTPException(status_code=500, detail="Internal error") from None
         finally:
             session.close()
 
@@ -281,8 +338,7 @@ class OrdersHandler:
             if invoice is not None:
                 invoice_number = invoice.invoice_number
             else:
-                # Paid before the invoices table existed - compute the same way,
-                # without persisting (this is a read path).
+                # Paid before the invoices table existed - compute without persisting.
                 paid_at = order.paid_at or order.created_at
                 invoice_number = f"INV-{paid_at:%Y%m%d}-{order.id:05d}"
 
@@ -290,5 +346,9 @@ class OrdersHandler:
             return generate_receipt_pdf(order, rows, user, invoice_number)
         except HTTPException:
             raise
+        except Exception:
+            session.rollback()
+            logger.exception("Failed to generate receipt")
+            raise HTTPException(status_code=500, detail="Internal error") from None
         finally:
             session.close()

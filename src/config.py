@@ -30,21 +30,15 @@ class AuthConfig:
     jwt_secret: str
     access_token_expiry_minutes: int
     refresh_token_expiry_days: int
-    # Cookies aren't sent over plain http without this off - set false for
-    # local http dev only; SameSite falls back to "lax" when insecure since
-    # browsers reject SameSite=None without Secure.
-    cookie_secure: bool
-    # Additional signing secrets this service will also accept on incoming
-    # Bearer tokens (e.g. tokens issued by the main Infollion platform during
-    # the SSO handoff). No live integration exists yet; this is a structural
-    # placeholder until that platform side is coordinated.
-    trusted_jwt_secrets: list = field(default_factory=list)
+    cookie_secure: bool  # false only for local http dev
+    trusted_jwt_secrets: list = field(default_factory=list)  # e.g. Infollion SSO tokens
 
 
 @dataclass
 class ServicesConfig:
     cors_origins: list
     frontend_base_url: str
+    enable_docs: bool = False  # exposes the full API surface with no auth of its own
 
 
 @dataclass
@@ -63,11 +57,6 @@ class EmailConfig:
 
 @dataclass
 class SecretsConfig:
-    # email_encryption_key: Fernet key encrypting users.email_encrypted at rest.
-    # email_hash_secret: HMAC pepper for users.email_hash (deterministic lookup hash).
-    # otp_hash_secret: HMAC pepper for users.otp_hash - a 6-digit code has too little
-    # entropy to hash unkeyed (a stolen DB dump could brute-force all 1M values offline
-    # in an instant without this secret).
     email_encryption_key: str
     email_hash_secret: str
     otp_hash_secret: str
@@ -75,10 +64,7 @@ class SecretsConfig:
 
 @dataclass
 class SigningServiceConfig:
-    # Separate backend service that signs S3 (Linode Object Storage) URLs for
-    # transcript view/download. Endpoint path and auth header format are not
-    # finalized yet - both default empty as placeholders.
-    base_url: str
+    base_url: str  # endpoint/auth contract not finalized yet - placeholders
     api_key: str
 
     @property
@@ -88,8 +74,6 @@ class SigningServiceConfig:
 
 @dataclass
 class PaymentConfig:
-    # Razorpay test-mode keys aren't provisioned yet - all default empty until
-    # they're added to .env. See services/payment/core.py.
     razorpay_key_id: str
     razorpay_key_secret: str
     razorpay_webhook_secret: str
@@ -134,6 +118,7 @@ class Settings:
             services=ServicesConfig(
                 cors_origins=cors_origins,
                 frontend_base_url=get_env("FRONTEND_BASE_URL"),
+                enable_docs=get_bool_env("ENABLE_DOCS", default=False),
             ),
             email=EmailConfig(
                 smtp_host=get_env("SMTP_HOST", default="", required=False),

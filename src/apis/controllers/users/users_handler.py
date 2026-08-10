@@ -20,6 +20,7 @@ def handle_get_profile(user_id: int) -> ProfileResponse:
     except HTTPException:
         raise
     except Exception:
+        session.rollback()
         logger.exception("Failed to fetch profile")
         raise HTTPException(status_code=500, detail="Internal error") from None
     finally:

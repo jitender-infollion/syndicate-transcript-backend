@@ -7,6 +7,7 @@ from services.database.postgres.connection import Base
 from .schema import EntitlementSource, EntitlementStatus
 
 
+# order_item_id is nullable because admin_grant entitlements have no order item.
 class Entitlement(Base):
     __tablename__ = "entitlements"
     __table_args__ = (
@@ -18,7 +19,6 @@ class Entitlement(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     transcript_id = Column(Integer, ForeignKey("transcripts.id"), nullable=False)
-    # Nullable because admin_grant entitlements have no order item.
     order_item_id = Column(Integer, ForeignKey("order_items.id"), nullable=True)
     status = Column(
         String, nullable=False, default=EntitlementStatus.ACTIVE.value, server_default=EntitlementStatus.ACTIVE.value

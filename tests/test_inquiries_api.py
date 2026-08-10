@@ -56,9 +56,9 @@ def test_submit_support_message_validates_fields(client, engine):
 
 
 def test_submit_support_message_is_rate_limited_by_ip(client, engine):
-    from apis.controllers.inquiries.inquiries_handler import RATE_LIMIT_SUPPORT_MAX_ATTEMPTS
+    from utils.rate_limiter import RateLimits
 
-    for _ in range(RATE_LIMIT_SUPPORT_MAX_ATTEMPTS):
+    for _ in range(RateLimits.inquiries.SUPPORT_MESSAGE.max_attempts):
         resp = client.post("/api/support", json=_valid_support_payload())
         assert resp.status_code == 200, resp.text
 
@@ -119,9 +119,9 @@ def test_submit_topic_request_validates_fields(client, engine):
 
 
 def test_submit_topic_request_is_rate_limited_by_ip(client, engine):
-    from apis.controllers.inquiries.inquiries_handler import RATE_LIMIT_TOPIC_REQUEST_MAX_ATTEMPTS
+    from utils.rate_limiter import RateLimits
 
-    for _ in range(RATE_LIMIT_TOPIC_REQUEST_MAX_ATTEMPTS):
+    for _ in range(RateLimits.inquiries.TOPIC_REQUEST.max_attempts):
         resp = client.post("/api/topics/request", json=_valid_topic_payload())
         assert resp.status_code == 200, resp.text
 
