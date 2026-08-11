@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from apis.controllers.auth import auth_controller
 from apis.controllers.auth.auth_schema import (
@@ -10,6 +10,13 @@ from apis.controllers.auth.auth_schema import (
     ResendOtpRequest,
     ResetPasswordRequest,
     VerifyOtpRequest,
+)
+from apis.rate_limiting.dependencies import (
+    rate_limit_forgot_password,
+    rate_limit_login,
+    rate_limit_login_otp_send,
+    rate_limit_register,
+    rate_limit_resend_otp,
 )
 from config import get_settings
 from utils.cookies import REFRESH_COOKIE_NAME, clear_refresh_cookie, set_refresh_cookie
@@ -27,9 +34,9 @@ def _set_refresh_cookie(response: Response, raw_token: str) -> None:
     set_refresh_cookie(response, raw_token, auth_settings.cookie_secure, auth_settings.refresh_token_expiry_days)
 
 
-@router.post(P.auth.REGISTER)
-def register(data: RegisterRequest, request: Request):
-    result = auth_controller.register(data, get_ip_address(request))
+@router.post(P.auth.REGISTER, dependencies=[Depends(rate_limit_register)])
+def register(data: RegisterRequest):
+    result = auth_controller.register(data)
     return success_response(data=result, message="OTP sent to your email. Please verify to complete registration.")
 
 
@@ -42,22 +49,22 @@ def verify_registration_otp(data: VerifyOtpRequest, request: Request, response: 
     return success_response(data=auth_response, message="Registration successful.")
 
 
-@router.post(P.auth.REGISTER_RESEND_OTP)
-def resend_otp(data: ResendOtpRequest, request: Request):
-    result = auth_controller.resend_otp(data, get_ip_address(request))
+@router.post(P.auth.REGISTER_RESEND_OTP, dependencies=[Depends(rate_limit_resend_otp)])
+def resend_otp(data: ResendOtpRequest):
+    result = auth_controller.resend_otp(data)
     return success_response(data=result, message="A new OTP has been sent to your email.")
 
 
-@router.post(P.auth.LOGIN)
+@router.post(P.auth.LOGIN, dependencies=[Depends(rate_limit_login)])
 def login(data: LoginRequest, request: Request, response: Response):
     auth_response, raw_refresh_token = auth_controller.login(data, get_device_info(request), get_ip_address(request))
     _set_refresh_cookie(response, raw_refresh_token)
     return success_response(data=auth_response, message="Login successful.")
 
 
-@router.post(P.auth.LOGIN_OTP_SEND)
-def send_login_otp(data: LoginOtpSendRequest, request: Request):
-    result = auth_controller.send_login_otp(data, get_ip_address(request))
+@router.post(P.auth.LOGIN_OTP_SEND, dependencies=[Depends(rate_limit_login_otp_send)])
+def send_login_otp(data: LoginOtpSendRequest):
+    result = auth_controller.send_login_otp(data)
     return success_response(data=result, message="OTP sent to your email.")
 
 
@@ -83,9 +90,9 @@ def refresh(request: Request, response: Response):
     return success_response(data=auth_response, message="Token refreshed.")
 
 
-@router.post(P.auth.FORGOT_PASSWORD)
-def forgot_password(data: ForgotPasswordRequest, request: Request):
-    auth_controller.forgot_password(data, get_ip_address(request))
+@router.post(P.auth.FORGOT_PASSWORD, dependencies=[Depends(rate_limit_forgot_password)])
+def forgot_password(data: ForgotPasswordRequest):
+    auth_controller.forgot_password(data)
     return success_response(message="Password reset link has been sent to your email.")
 
 

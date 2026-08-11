@@ -1,13 +1,20 @@
 import re
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from apis.rate_limiting.limiter import RateLimitPolicy, RateLimits
 from apis.security import decode_access_token
 from config import get_settings
+from utils.request_meta import get_ip_address
 from utils.response import error_response
 
-# Per-request auth gate: public, soft-auth, or requires login.
+# Per-request auth gate: public, soft-auth, or requires login. Also applies
+# the two generic rate-limit catch-alls (IP for public/soft-auth, user for
+# authenticated) that apply to every request regardless of route. Anything
+# more specific (per-endpoint IP limits, OTP-generation limits, etc.) lives as
+# route-level dependencies in apis/rate_limiting/dependencies.py instead, so
+# this file stays a simple, business-logic-free auth gate.
 
 # Dynamic id - scoped to one segment so /me/purchased, /{id}/view|download stay protected.
 PUBLIC_PATH_RE = re.compile(r"^/api/transcripts/[^/]+$")
@@ -38,12 +45,37 @@ UNPROTECTED_PATHS = {
 }
 
 
+def _rate_limit_response(policy: RateLimitPolicy, key: str) -> JSONResponse | None:
+    try:
+        policy.check(key)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content=error_response(str(exc.detail)))
+    return None
+
+
 async def jwt_middleware(request: Request, call_next):
     path = request.url.path
+
+    # Fully public, unauthenticated - webhooks excluded (server-to-server,
+    # protected by gateway signature instead; IP-limiting them risks dropping
+    # legitimate redelivery bursts from the gateway's own IP pool).
     if path in UNPROTECTED_PATHS or PUBLIC_PATH_RE.match(path) or WEBHOOK_PATH_RE.match(path):
+        if not WEBHOOK_PATH_RE.match(path):
+            ip_address = get_ip_address(request)
+            if ip_address:
+                blocked = _rate_limit_response(RateLimits.general.PUBLIC_IP, f"public:{ip_address}")
+                if blocked:
+                    return blocked
         return await call_next(request)
 
+    # Soft-auth: optional login, but still unauthenticated-reachable.
     if path in SOFT_AUTH_PATHS or SOFT_AUTH_PATH_RE.match(path):
+        ip_address = get_ip_address(request)
+        if ip_address:
+            blocked = _rate_limit_response(RateLimits.general.PUBLIC_IP, f"public:{ip_address}")
+            if blocked:
+                return blocked
+
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             payload = decode_access_token(auth_header.removeprefix("Bearer ").strip())
@@ -51,6 +83,7 @@ async def jwt_middleware(request: Request, call_next):
                 request.state.user_id = payload.get("user_id")
         return await call_next(request)
 
+    # Hard auth required.
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         return JSONResponse(status_code=401, content=error_response("Not authenticated"))
@@ -63,4 +96,9 @@ async def jwt_middleware(request: Request, call_next):
     request.state.user_id = payload.get("user_id")
     request.state.user_name = payload.get("user_name")
     request.state.email = payload.get("email")
+
+    blocked = _rate_limit_response(RateLimits.general.AUTHENTICATED_USER, f"user:{request.state.user_id}")
+    if blocked:
+        return blocked
+
     return await call_next(request)

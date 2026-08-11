@@ -38,8 +38,8 @@ def _warn_if_shared_with_dev(url: str) -> None:
     if dev_url and url == dev_url:
         print(
             f"\nWARNING: {_TEST_DB_ENV} is the same database as DATABASE_URL. "
-            "Every test run TRUNCATEs sessions/entitlements/order_items/orders/cart_items/carts/transcripts/"
-            "authors/users, erasing all real data in this database. Proceeding because this was an explicit choice.\n",
+            "Every test run TRUNCATEs sessions/order_items/orders/cart_items/carts/transcripts/"
+            "users, erasing all real data in this database. Proceeding because this was an explicit choice.\n",
             file=sys.stderr,
         )
 
@@ -79,8 +79,8 @@ def _clean_tables(request):
         with eng.begin() as conn:
             conn.execute(
                 text(
-                    "TRUNCATE sessions, entitlements, invoices, payments, order_items, orders, cart_items, carts, "
-                    "support_messages, topic_requests, transcripts, authors, users RESTART IDENTITY CASCADE"
+                    "TRUNCATE sessions, receipts, payments, order_items, orders, cart_items, carts, "
+                    "support_tickets, topic_requests, transcripts, users RESTART IDENTITY CASCADE"
                 )
             )
     yield
@@ -94,7 +94,7 @@ def client(engine):
     import apis.dependencies as dependencies
 
     dependencies._orders_controller = None
-    from utils.rate_limiter import reset_rate_limits
+    from apis.rate_limiting.limiter import reset_rate_limits
 
     reset_rate_limits()
     import main

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, UniqueConstraint, text
 
 from services.database.postgres.connection import Base
 
@@ -24,8 +24,8 @@ class Cart(Base):
         ),
     )
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     guest_id = Column(String, nullable=True, index=True)
     status = Column(String, nullable=False, default=CartStatus.ACTIVE.value, server_default=CartStatus.ACTIVE.value)
     created_at = Column(DateTime, server_default=text("now()"), nullable=True)
@@ -37,7 +37,7 @@ class CartItem(Base):
     __tablename__ = "cart_items"
     __table_args__ = (UniqueConstraint("cart_id", "transcript_id", name="uq_cart_items_cart_transcript"),)
 
-    id = Column(Integer, primary_key=True, index=True)
-    cart_id = Column(Integer, ForeignKey("carts.id", ondelete="CASCADE"), nullable=False)
-    transcript_id = Column(Integer, ForeignKey("transcripts.id"), nullable=False)
+    id = Column(BigInteger, primary_key=True, index=True)
+    cart_id = Column(BigInteger, ForeignKey("carts.id", ondelete="CASCADE"), nullable=False)
+    transcript_id = Column(BigInteger, ForeignKey("transcripts.id"), nullable=False)
     created_at = Column(DateTime, server_default=text("now()"), nullable=True)

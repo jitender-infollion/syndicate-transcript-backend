@@ -57,7 +57,7 @@ def test_register_stores_account_before_verification(client, monkeypatch):
 
 
 def test_register_is_rate_limited_by_ip(client):
-    from utils.rate_limiter import RateLimits
+    from apis.rate_limiting.limiter import RateLimits
 
     # No account exists yet for any of these - the limit is keyed by IP (the
     # test client's requests all share one), not by email.
@@ -81,7 +81,7 @@ def test_register_is_rate_limited_by_ip(client):
 
 
 def test_login_is_rate_limited_by_ip(client):
-    from utils.rate_limiter import RateLimits
+    from apis.rate_limiting.limiter import RateLimits
 
     # Wrong credentials against an account that doesn't even exist - the IP
     # counter increments before any account lookup, so this alone proves it.
@@ -94,7 +94,7 @@ def test_login_is_rate_limited_by_ip(client):
 
 
 def test_login_otp_send_is_rate_limited_by_ip(client):
-    from utils.rate_limiter import RateLimits
+    from apis.rate_limiting.limiter import RateLimits
 
     for _ in range(RateLimits.auth.LOGIN_OTP_IP.max_attempts):
         resp = client.post("/api/auth/login/otp/send", json={"email": "nobody@example.com"})
@@ -105,7 +105,7 @@ def test_login_otp_send_is_rate_limited_by_ip(client):
 
 
 def test_forgot_password_is_rate_limited_by_ip(client):
-    from utils.rate_limiter import RateLimits
+    from apis.rate_limiting.limiter import RateLimits
 
     for _ in range(RateLimits.auth.FORGOT_PASSWORD_IP.max_attempts):
         resp = client.post("/api/auth/forgot-password", json={"email": "nobody@example.com"})
@@ -326,7 +326,7 @@ def test_login_blocked_then_resend_otp_then_verify_flow(client, monkeypatch):
     # The scenario is "comes back later", but the test runs both calls
     # milliseconds apart - clear the in-memory OTP-generation counters so the
     # 45s resend cooldown (meant for *rapid* resend clicks) doesn't fire here.
-    from utils.rate_limiter import reset_rate_limits
+    from apis.rate_limiting.limiter import reset_rate_limits
 
     reset_rate_limits()
     resp = client.post("/api/auth/register/resend-otp", json={"tempToken": pending_token})

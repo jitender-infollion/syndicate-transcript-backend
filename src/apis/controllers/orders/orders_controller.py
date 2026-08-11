@@ -2,6 +2,7 @@ from .orders_handler import OrdersHandler
 from .orders_schema import (
     CreateOrderRequest,
     CreateOrderResponse,
+    FreeOrderResponse,
     OrderSummary,
     VerifyPaymentRequest,
     VerifyPaymentResponse,
@@ -12,7 +13,9 @@ class OrdersController:
     def __init__(self, handler: OrdersHandler):
         self.handler = handler
 
-    def create_order(self, user_id: int, body: CreateOrderRequest, idempotency_key: str) -> CreateOrderResponse:
+    def create_order(
+        self, user_id: int, body: CreateOrderRequest, idempotency_key: str
+    ) -> CreateOrderResponse | FreeOrderResponse:
         return self.handler.create_order(user_id, body.transcriptIds, idempotency_key)
 
     def verify_payment(self, user_id: int, body: VerifyPaymentRequest) -> VerifyPaymentResponse:

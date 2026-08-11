@@ -19,7 +19,6 @@ from config import get_settings
 from services.crypto.email_crypto import hash_email
 from services.database.postgres.connection import get_session
 from services.email.email_service import send_login_otp, send_password_reset_link, send_registration_otp
-from utils.rate_limiter import RateLimits
 
 from .auth_helper import issue_login, issue_otp, require_pending_user, verify_otp
 from .auth_schema import AuthResponse, PendingAuthResponse, RegisterRequest
@@ -48,23 +47,7 @@ INVALID_LOGIN_DETAIL = "Invalid email or password."
 INVALID_REFRESH_DETAIL = "Your session has expired. Please log in again."
 
 
-def _enforce_otp_generation_limits(purpose: str, email: str, ip_address: str | None) -> None:
-    # Caps OTP generation itself, not just wrong guesses. Keyed per purpose so
-    # a signup's counters can't block an unrelated login-OTP request.
-    email_key = hash_email(email)
-    RateLimits.auth.OTP_RESEND_COOLDOWN.check(f"otp_cooldown:{purpose}:{email_key}")
-    RateLimits.auth.OTP_EMAIL_BURST.check(f"otp_email_burst:{purpose}:{email_key}")
-    RateLimits.auth.OTP_EMAIL_HOURLY.check(f"otp_email_hourly:{purpose}:{email_key}")
-    RateLimits.auth.OTP_EMAIL_DAILY.check(f"otp_email_daily:{purpose}:{email_key}")
-    if ip_address:
-        RateLimits.auth.OTP_IP_BURST.check(f"otp_ip_burst:{purpose}:{ip_address}")
-        RateLimits.auth.OTP_IP_HOURLY.check(f"otp_ip_hourly:{purpose}:{ip_address}")
-
-
-def handle_register(data: RegisterRequest, ip_address: str | None) -> PendingAuthResponse:
-    if ip_address:
-        RateLimits.auth.REGISTER_IP.check(f"register:{ip_address}")
-
+def handle_register(data: RegisterRequest) -> PendingAuthResponse:
     session = get_session()
     try:
         try:
@@ -89,7 +72,6 @@ def handle_register(data: RegisterRequest, ip_address: str | None) -> PendingAut
                 session.add(user)
             session.flush()
 
-            _enforce_otp_generation_limits("register", data.email, ip_address)
             otp_code = issue_otp(
                 session,
                 user,
@@ -97,10 +79,10 @@ def handle_register(data: RegisterRequest, ip_address: str | None) -> PendingAut
                 RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
                 RATE_LIMIT_EMAIL_VERIFICATION_COOLDOWN_MINUTES,
             )
-            pending_token = create_pending_verification_token(user.id)
+            temp_token = create_pending_verification_token(user.id)
             session.commit()
             send_registration_otp(data.email, otp_code)
-            return PendingAuthResponse(tempToken=pending_token)
+            return PendingAuthResponse(tempToken=temp_token)
         except IntegrityError:
             raise HTTPException(status_code=409, detail="An account with this email already exists.") from None
     except HTTPException:
@@ -114,11 +96,11 @@ def handle_register(data: RegisterRequest, ip_address: str | None) -> PendingAut
 
 
 def handle_verify_registration_otp(
-    pending_token: str, otp: str, device_info: str | None, ip_address: str | None
+    temp_token: str, otp: str, device_info: str | None, ip_address: str | None
 ) -> tuple[AuthResponse, str]:
     session = get_session()
     try:
-        user = require_pending_user(session, pending_token)
+        user = require_pending_user(session, temp_token)
         if user.email_verified:
             result = issue_login(session, user, device_info, ip_address)
             session.commit()
@@ -139,14 +121,13 @@ def handle_verify_registration_otp(
         session.close()
 
 
-def handle_resend_otp(pending_token: str, ip_address: str | None) -> PendingAuthResponse:
+def handle_resend_otp(temp_token: str) -> PendingAuthResponse:
     session = get_session()
     try:
-        user = require_pending_user(session, pending_token)
+        user = require_pending_user(session, temp_token)
         if user.email_verified:
             raise HTTPException(status_code=409, detail="This account is already verified.")
 
-        _enforce_otp_generation_limits("register", user.email, ip_address)
         otp_code = issue_otp(
             session,
             user,
@@ -154,10 +135,10 @@ def handle_resend_otp(pending_token: str, ip_address: str | None) -> PendingAuth
             RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS,
             RATE_LIMIT_EMAIL_VERIFICATION_COOLDOWN_MINUTES,
         )
-        new_pending_token = create_pending_verification_token(user.id)
+        new_temp_token = create_pending_verification_token(user.id)
         session.commit()
         send_registration_otp(user.email, otp_code)
-        return PendingAuthResponse(tempToken=new_pending_token)
+        return PendingAuthResponse(tempToken=new_temp_token)
     except HTTPException:
         raise
     except Exception:
@@ -171,9 +152,6 @@ def handle_resend_otp(pending_token: str, ip_address: str | None) -> PendingAuth
 def handle_login(
     email: str, password: str, device_info: str | None, ip_address: str | None
 ) -> tuple[AuthResponse, str]:
-    if ip_address:
-        RateLimits.auth.LOGIN_IP.check(f"login:{ip_address}")
-
     session = get_session()
     try:
         user = session.query(User).filter(User.email_hash == hash_email(email)).first()
@@ -196,13 +174,13 @@ def handle_login(
 
         if not user.email_verified:
             # Correct password, unverified - resume signup's OTP flow, no auto-resend.
-            pending_token = create_pending_verification_token(user.id)
+            temp_token = create_pending_verification_token(user.id)
             session.commit()
             raise HTTPException(
                 status_code=403,
                 detail={
                     "message": "Please verify your email before logging in.",
-                    "data": {"tempToken": pending_token},
+                    "data": {"tempToken": temp_token},
                 },
             )
         result = issue_login(session, user, device_info, ip_address)
@@ -218,17 +196,13 @@ def handle_login(
         session.close()
 
 
-def handle_send_login_otp(email: str, ip_address: str | None) -> PendingAuthResponse:
-    if ip_address:
-        RateLimits.auth.LOGIN_OTP_IP.check(f"login_otp:{ip_address}")
-
+def handle_send_login_otp(email: str) -> PendingAuthResponse:
     session = get_session()
     try:
         user = session.query(User).filter(User.email_hash == hash_email(email)).first()
         if not user or not user.active or not user.email_verified:
             raise HTTPException(status_code=401, detail="Invalid email or account not found.")
 
-        _enforce_otp_generation_limits("login", email, ip_address)
         otp_code = issue_otp(
             session,
             user,
@@ -236,10 +210,10 @@ def handle_send_login_otp(email: str, ip_address: str | None) -> PendingAuthResp
             RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS,
             RATE_LIMIT_LOGIN_OTP_COOLDOWN_MINUTES,
         )
-        pending_token = create_otp_login_token(user.id)
+        temp_token = create_otp_login_token(user.id)
         session.commit()
         send_login_otp(user.email, otp_code)
-        return PendingAuthResponse(tempToken=pending_token)
+        return PendingAuthResponse(tempToken=temp_token)
     except HTTPException:
         raise
     except Exception:
@@ -251,9 +225,9 @@ def handle_send_login_otp(email: str, ip_address: str | None) -> PendingAuthResp
 
 
 def handle_verify_login_otp(
-    pending_token: str, otp: str, device_info: str | None, ip_address: str | None
+    temp_token: str, otp: str, device_info: str | None, ip_address: str | None
 ) -> tuple[AuthResponse, str]:
-    user_id = decode_otp_login_token(pending_token)
+    user_id = decode_otp_login_token(temp_token)
     if user_id is None:
         raise HTTPException(status_code=401, detail=INVALID_OTP_LOGIN_SESSION_DETAIL)
 
@@ -277,10 +251,7 @@ def handle_verify_login_otp(
         session.close()
 
 
-def handle_forgot_password(email: str, ip_address: str | None) -> None:
-    if ip_address:
-        RateLimits.auth.FORGOT_PASSWORD_IP.check(f"forgot_password:{ip_address}")
-
+def handle_forgot_password(email: str) -> None:
     session = get_session()
     try:
         user = session.query(User).filter(User.email_hash == hash_email(email)).first()

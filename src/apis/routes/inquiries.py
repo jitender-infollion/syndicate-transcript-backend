@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Request
 from apis.controllers.inquiries import inquiries_controller
 from apis.controllers.inquiries.inquiries_schema import SupportMessagePayload, TopicRequestPayload
 from apis.dependencies import get_current_user_id_optional
+from apis.rate_limiting.dependencies import rate_limit_support, rate_limit_topic_request
 from utils.request_meta import get_ip_address
 from utils.response import success_response
 
@@ -12,7 +13,7 @@ support_router = APIRouter(prefix=P.support.BASE, tags=["Support"])
 topics_router = APIRouter(prefix=P.topics.BASE, tags=["Topics"])
 
 
-@support_router.post(P.support.ROOT)
+@support_router.post(P.support.ROOT, dependencies=[Depends(rate_limit_support)])
 def submit_support_message(
     body: SupportMessagePayload,
     request: Request,
@@ -22,7 +23,7 @@ def submit_support_message(
     return success_response(message="Your message has been sent.")
 
 
-@topics_router.post(P.topics.REQUEST)
+@topics_router.post(P.topics.REQUEST, dependencies=[Depends(rate_limit_topic_request)])
 def submit_topic_request(
     body: TopicRequestPayload,
     request: Request,

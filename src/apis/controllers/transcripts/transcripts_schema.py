@@ -7,6 +7,7 @@ class AuthorSummary(BaseModel):
     id: int
     name: str | None
     designation: str | None
+    yearsOfExperience: int | None
 
 
 class FinalTranscriptRef(BaseModel):

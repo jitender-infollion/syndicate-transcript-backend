@@ -1,5 +1,4 @@
-from apis.models.author import Author
-from apis.models.entitlement import Entitlement, EntitlementStatus
+from apis.models.order import Order, OrderItem, OrderStatus
 from apis.models.transcript import Transcript
 
 from .transcripts_schema import AuthorSummary, FinalTranscriptRef, TranscriptListItem
@@ -18,21 +17,24 @@ SLIM_TRANSCRIPT_COLUMNS = (
     Transcript.published_at,
     Transcript.approved_at,
     Transcript.created_at,
-    Author.id,
-    Author.name,
-    Author.designation,
+    Transcript.fk_expert,
+    Transcript.expert_name,
+    Transcript.designation,
+    Transcript.years_of_experience,
 )
 
 
-def has_active_entitlement(session, user_id: int | None, transcript_id: int) -> bool:
+def has_transcript_access(session, user_id: int | None, transcript_id: int) -> bool:
     if user_id is None:
         return False
     return (
-        session.query(Entitlement.id)
+        session.query(OrderItem.id)
+        .join(Order, Order.id == OrderItem.order_id)
         .filter(
-            Entitlement.user_id == user_id,
-            Entitlement.transcript_id == transcript_id,
-            Entitlement.status == EntitlementStatus.ACTIVE.value,
+            OrderItem.user_id == user_id,
+            OrderItem.transcript_id == transcript_id,
+            OrderItem.access_permission.is_(False),
+            Order.status == OrderStatus.PAID.value,
         )
         .first()
         is not None
@@ -53,12 +55,13 @@ def row_to_transcript_list_item(row) -> TranscriptListItem:
         published_at,
         approved_at,
         created_at,
-        author_id,
-        author_name,
-        author_designation,
+        fk_expert,
+        expert_name,
+        designation,
+        years_of_experience,
     ) = row
-    author = (
-        AuthorSummary(id=author_id, name=author_name, designation=author_designation) if author_id else None
+    author = AuthorSummary(
+        id=fk_expert, name=expert_name, designation=designation, yearsOfExperience=years_of_experience
     )
     final_transcript_ref = (
         FinalTranscriptRef(url=final_transcript["url"], filename=final_transcript["filename"])

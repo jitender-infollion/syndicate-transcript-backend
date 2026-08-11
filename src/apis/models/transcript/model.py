@@ -1,6 +1,5 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Integer, JSON, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import relationship
 
 from services.database.postgres.connection import Base
 
@@ -14,8 +13,11 @@ class Transcript(Base):
         Index("ix_transcripts_is_active_published_at", "is_active", "published_at"),
     )
 
-    id = Column(Integer, primary_key=True, index=True)
-    author_id = Column(Integer, ForeignKey("authors.id"), nullable=False, index=True)
+    id = Column(BigInteger, primary_key=True, index=True)
+    fk_expert = Column(BigInteger, nullable=False, index=True)  # external id from the expert-management backend, no local FK
+    expert_name = Column(String, nullable=True)  # snapshot of expert name at time of publishing
+    designation = Column(String, nullable=True)  # snapshot of expert designation at time of publishing
+    years_of_experience = Column(Integer, nullable=True)
     topic = Column(String, nullable=True)
     domain = Column(ARRAY(String), nullable=True)
     geography = Column(ARRAY(String), nullable=True)
@@ -27,5 +29,3 @@ class Transcript(Base):
     price = Column(Integer, nullable=False)
     is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(DateTime, server_default=text("now()"), nullable=True)
-
-    author = relationship("Author")

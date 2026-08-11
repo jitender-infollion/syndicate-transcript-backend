@@ -1,3 +1,3 @@
-from .model import SupportMessage, TopicRequest
+from .model import SupportTicket, TopicRequest
 
-__all__ = ["SupportMessage", "TopicRequest"]
+__all__ = ["SupportTicket", "TopicRequest"]

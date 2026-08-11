@@ -1,10 +1,9 @@
-from .author import Author
 from .cart import Cart, CartItem, CartStatus
-from .entitlement import Entitlement, EntitlementSource, EntitlementStatus
-from .inquiries import SupportMessage, TopicRequest
-from .invoice import Invoice
+from .coupon import Coupon, CouponRedemption, DiscountType
+from .inquiries import SupportTicket, TopicRequest
 from .order import Order, OrderItem, OrderStatus
 from .payment import Payment, PaymentStatus
+from .receipt import Receipt
 from .session import Session
 from .transcript import Transcript
 from .user import User, UserRole
@@ -12,21 +11,20 @@ from .user import User, UserRole
 __all__ = [
     "User",
     "UserRole",
-    "Author",
     "Transcript",
-    "Entitlement",
-    "EntitlementStatus",
-    "EntitlementSource",
     "Session",
     "Cart",
     "CartItem",
     "CartStatus",
+    "Coupon",
+    "CouponRedemption",
+    "DiscountType",
     "Order",
     "OrderItem",
     "OrderStatus",
-    "Invoice",
+    "Receipt",
     "Payment",
     "PaymentStatus",
-    "SupportMessage",
+    "SupportTicket",
     "TopicRequest",
 ]

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text, text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Integer, String, Text, text
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from services.crypto.email_crypto import decrypt_email, encrypt_email, hash_email
@@ -16,7 +16,7 @@ class User(Base):
         Index("ix_users_anonymized_at_null", "anonymized_at", postgresql_where=text("anonymized_at IS NULL")),
     )
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(BigInteger, primary_key=True, index=True)
     name = Column(String, nullable=True)
     email_encrypted = Column(Text, nullable=False)
     email_hash = Column(String, unique=True, nullable=False, index=True)

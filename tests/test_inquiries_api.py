@@ -1,5 +1,6 @@
 from sqlalchemy import text
 
+from services.crypto.email_crypto import decrypt_email
 from test_transcripts_api import _auth_headers, _signup_and_verify
 
 
@@ -20,10 +21,10 @@ def test_submit_support_message_stores_row(client, engine):
     assert resp.status_code == 200, resp.text
 
     with engine.begin() as conn:
-        row = conn.execute(text("SELECT name, email, message, user_id FROM support_messages")).fetchone()
+        row = conn.execute(text("SELECT name, email_encrypted, message, user_id FROM support_tickets")).fetchone()
     assert row is not None
     assert row.name == "Jane Doe"
-    assert row.email == "jane@example.com"
+    assert decrypt_email(row.email_encrypted) == "jane@example.com"
     assert row.user_id is None
 
 
@@ -40,7 +41,7 @@ def test_submit_support_message_captures_user_id_when_logged_in(client, monkeypa
     assert resp.status_code == 200, resp.text
 
     with engine.begin() as conn:
-        row = conn.execute(text("SELECT user_id FROM support_messages")).fetchone()
+        row = conn.execute(text("SELECT user_id FROM support_tickets")).fetchone()
     assert row.user_id == user_id
 
 
@@ -56,7 +57,7 @@ def test_submit_support_message_validates_fields(client, engine):
 
 
 def test_submit_support_message_is_rate_limited_by_ip(client, engine):
-    from utils.rate_limiter import RateLimits
+    from apis.rate_limiting.limiter import RateLimits
 
     for _ in range(RateLimits.inquiries.SUPPORT_MESSAGE.max_attempts):
         resp = client.post("/api/support", json=_valid_support_payload())
@@ -81,14 +82,14 @@ def test_submit_topic_request_stores_row(client, engine):
     with engine.begin() as conn:
         row = conn.execute(
             text(
-                "SELECT topic, domain, email, remark, suggested_expert_name, suggested_expert_linkedin, user_id "
-                "FROM topic_requests"
+                "SELECT topic, domain, email_encrypted, remark, suggested_expert_name, suggested_expert_linkedin, "
+                "user_id FROM topic_requests"
             )
         ).fetchone()
     assert row is not None
     assert row.topic == "AI in Healthcare"
     assert row.domain == "Healthcare"
-    assert row.email == "requester@example.com"
+    assert decrypt_email(row.email_encrypted) == "requester@example.com"
     assert row.suggested_expert_name == "Dr. Smith"
     assert row.user_id is None
 
@@ -119,7 +120,7 @@ def test_submit_topic_request_validates_fields(client, engine):
 
 
 def test_submit_topic_request_is_rate_limited_by_ip(client, engine):
-    from utils.rate_limiter import RateLimits
+    from apis.rate_limiting.limiter import RateLimits
 
     for _ in range(RateLimits.inquiries.TOPIC_REQUEST.max_attempts):
         resp = client.post("/api/topics/request", json=_valid_topic_payload())

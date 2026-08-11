@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from apis.controllers.orders.orders_controller import OrdersController
 from apis.controllers.orders.orders_schema import CreateOrderRequest, VerifyPaymentRequest
 from apis.dependencies import get_current_user_id, get_orders_controller
+from apis.rate_limiting.dependencies import rate_limit_create_order
 from utils.response import pdf_response, success_response
 
 from .paths import P
@@ -10,7 +11,7 @@ from .paths import P
 router = APIRouter(prefix=P.orders.BASE, tags=["Orders"])
 
 
-@router.post(P.orders.ROOT)
+@router.post(P.orders.ROOT, dependencies=[Depends(rate_limit_create_order)])
 def create_order(
     body: CreateOrderRequest,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),

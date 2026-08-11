@@ -4,10 +4,21 @@ FROM python:3.13.5-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    # User 1001 has no home dir otherwise, so fontconfig (used by WeasyPrint)
+    # has nowhere writable to cache its font list - it'd rescan on every PDF.
+    HOME=/tmp
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    # WeasyPrint (HTML-to-PDF for receipts) needs these native libs at runtime.
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libcairo2 \
+    libffi8 \
+    shared-mime-info \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
 
 from services.database.postgres.connection import Base
 
@@ -14,8 +14,8 @@ class Order(Base):
         UniqueConstraint("user_id", "idempotency_key", name="uq_orders_user_idempotency_key"),
     )
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
     status = Column(String, nullable=False, default=OrderStatus.CREATED.value, server_default=OrderStatus.CREATED.value)
     amount = Column(Integer, nullable=False)
     currency = Column(String, nullable=False)
@@ -28,10 +28,18 @@ class Order(Base):
 # price is a snapshot at checkout time - later price changes don't affect it.
 class OrderItem(Base):
     __tablename__ = "order_items"
-    __table_args__ = (UniqueConstraint("order_id", "transcript_id", name="uq_order_items_order_transcript"),)
+    __table_args__ = (
+        UniqueConstraint("order_id", "transcript_id", name="uq_order_items_order_transcript"),
+        Index("ix_order_items_user_id_transcript_id", "user_id", "transcript_id"),
+    )
 
-    id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
-    transcript_id = Column(Integer, ForeignKey("transcripts.id"), nullable=False)
+    id = Column(BigInteger, primary_key=True, index=True)
+    order_id = Column(BigInteger, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
+    transcript_id = Column(BigInteger, ForeignKey("transcripts.id"), nullable=False, index=True)
     price = Column(Integer, nullable=False)
+    currency = Column(String, nullable=False)
+    access_permission = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )  # true = access revoked (renamed from "refunded")
     created_at = Column(DateTime, server_default=text("now()"), nullable=True)

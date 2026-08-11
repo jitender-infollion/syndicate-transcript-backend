@@ -22,6 +22,16 @@ class CreateOrderResponse(BaseModel):
     keyId: str
 
 
+class FreeOrderResponse(BaseModel):
+    # Zero-amount order (or an existing order that's already paid) - nothing
+    # to check out with Razorpay, so there's no razorpayOrderId/keyId to give
+    # the frontend. Status will always be "paid" here.
+    orderId: str
+    status: OrderStatusLiteral
+    transcriptIds: list[int]
+    amount: int
+
+
 class VerifyPaymentRequest(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str

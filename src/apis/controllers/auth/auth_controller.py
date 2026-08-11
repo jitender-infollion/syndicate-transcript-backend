@@ -25,9 +25,9 @@ from .auth_schema import (
 from .auth_validator import validate_otp_format, validate_password
 
 
-def register(data: RegisterRequest, ip_address: str | None) -> PendingAuthResponse:
+def register(data: RegisterRequest) -> PendingAuthResponse:
     validate_password(data.password)
-    return handle_register(data, ip_address)
+    return handle_register(data)
 
 
 def verify_registration_otp(
@@ -37,16 +37,16 @@ def verify_registration_otp(
     return handle_verify_registration_otp(data.tempToken, data.otp, device_info, ip_address)
 
 
-def resend_otp(data: ResendOtpRequest, ip_address: str | None) -> PendingAuthResponse:
-    return handle_resend_otp(data.tempToken, ip_address)
+def resend_otp(data: ResendOtpRequest) -> PendingAuthResponse:
+    return handle_resend_otp(data.tempToken)
 
 
 def login(data: LoginRequest, device_info: str | None, ip_address: str | None) -> tuple[AuthResponse, str]:
     return handle_login(data.email, data.password, device_info, ip_address)
 
 
-def send_login_otp(data: LoginOtpSendRequest, ip_address: str | None) -> PendingAuthResponse:
-    return handle_send_login_otp(data.email, ip_address)
+def send_login_otp(data: LoginOtpSendRequest) -> PendingAuthResponse:
+    return handle_send_login_otp(data.email)
 
 
 def verify_login_otp(
@@ -56,8 +56,8 @@ def verify_login_otp(
     return handle_verify_login_otp(data.tempToken, data.otp, device_info, ip_address)
 
 
-def forgot_password(data: ForgotPasswordRequest, ip_address: str | None) -> None:
-    handle_forgot_password(data.email, ip_address)
+def forgot_password(data: ForgotPasswordRequest) -> None:
+    handle_forgot_password(data.email)
 
 
 def reset_password(data: ResetPasswordRequest) -> None:

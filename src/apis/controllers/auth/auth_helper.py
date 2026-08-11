@@ -88,8 +88,8 @@ def issue_login(session, user: User, device_info: str | None, ip_address: str | 
     return auth_response, refresh_token
 
 
-def require_pending_user(session, pending_token: str) -> User:
-    user_id = decode_pending_verification_token(pending_token)
+def require_pending_user(session, temp_token: str) -> User:
+    user_id = decode_pending_verification_token(temp_token)
     if user_id is None:
         raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL)
     user = session.query(User).filter(User.id == user_id).first()

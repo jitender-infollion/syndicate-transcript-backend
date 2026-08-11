@@ -28,12 +28,8 @@ def _signup_and_verify(client, monkeypatch, email="reader@example.com", password
 
 
 def _seed_author(engine) -> int:
-    with engine.begin() as conn:
-        result = conn.execute(
-            text("INSERT INTO authors (name, designation) VALUES (:name, :designation) RETURNING id"),
-            {"name": "Sarah Mitchell", "designation": "VP of Revenue Operations"},
-        )
-        return result.scalar_one()
+    # experts now come from a separate backend with no local table - any id works here
+    return 9001
 
 
 def _seed_transcript(
@@ -59,16 +55,19 @@ def _seed_transcript(
             text(
                 """
                 INSERT INTO transcripts
-                    (author_id, topic, domain, geography, preview, key_insight, final_transcript, price,
-                     published_at, approved_at, is_active)
+                    (fk_expert, expert_name, designation, years_of_experience, topic, domain, geography, preview,
+                     key_insight, final_transcript, price, published_at, approved_at, is_active)
                 VALUES
-                    (:author_id, :topic, :domain, :geography, :preview, :key_insight, :final_transcript, :price,
-                     :published_at, :approved_at, true)
+                    (:fk_expert, :expert_name, :designation, :years_of_experience, :topic, :domain, :geography,
+                     :preview, :key_insight, :final_transcript, :price, :published_at, :approved_at, true)
                 RETURNING id
                 """
             ),
             {
-                "author_id": author_id,
+                "fk_expert": author_id,
+                "expert_name": "Sarah Mitchell",
+                "designation": "VP of Revenue Operations",
+                "years_of_experience": 12,
                 "topic": topic,
                 "domain": domain,
                 "geography": geography,
@@ -83,14 +82,21 @@ def _seed_transcript(
         return result.scalar_one()
 
 
-def _grant_entitlement(engine, user_id: int, transcript_id: int) -> None:
+def _grant_transcript_access(engine, user_id: int, transcript_id: int) -> None:
     with engine.begin() as conn:
+        order_id = conn.execute(
+            text(
+                "INSERT INTO orders (user_id, status, amount, currency, paid_at) "
+                "VALUES (:user_id, 'paid', 0, 'INR', now()) RETURNING id"
+            ),
+            {"user_id": user_id},
+        ).scalar_one()
         conn.execute(
             text(
-                "INSERT INTO entitlements (user_id, transcript_id, status, source, granted_at) "
-                "VALUES (:user_id, :transcript_id, 'active', 'admin_grant', now())"
+                "INSERT INTO order_items (order_id, user_id, transcript_id, price, currency, access_permission) "
+                "VALUES (:order_id, :user_id, :transcript_id, 0, 'INR', false)"
             ),
-            {"user_id": user_id, "transcript_id": transcript_id},
+            {"order_id": order_id, "user_id": user_id, "transcript_id": transcript_id},
         )
 
 
@@ -187,7 +193,7 @@ def test_view_still_not_implemented_after_purchase(client, monkeypatch, engine):
     token, user_id = _signup_and_verify(client, monkeypatch)
     author_id = _seed_author(engine)
     transcript_id = _seed_transcript(engine, author_id)
-    _grant_entitlement(engine, user_id, transcript_id)
+    _grant_transcript_access(engine, user_id, transcript_id)
 
     resp = client.get(f"/api/transcripts/{transcript_id}/view", headers=_auth_headers(token))
     assert resp.status_code == 501
@@ -197,7 +203,7 @@ def test_full_text_and_download_work_after_purchase(client, monkeypatch, engine)
     token, user_id = _signup_and_verify(client, monkeypatch)
     author_id = _seed_author(engine)
     transcript_id = _seed_transcript(engine, author_id)
-    _grant_entitlement(engine, user_id, transcript_id)
+    _grant_transcript_access(engine, user_id, transcript_id)
 
     full_text_resp = client.get(f"/api/transcripts/{transcript_id}/full-text", headers=_auth_headers(token))
     assert full_text_resp.status_code == 200, full_text_resp.text
@@ -252,7 +258,7 @@ def test_my_purchased_only_returns_entitled_transcripts(client, monkeypatch, eng
     author_id = _seed_author(engine)
     purchased_id = _seed_transcript(engine, author_id)
     _seed_transcript(engine, author_id)  # not purchased
-    _grant_entitlement(engine, user_id, purchased_id)
+    _grant_transcript_access(engine, user_id, purchased_id)
 
     resp = client.get("/api/transcripts/me/purchased", headers=_auth_headers(token))
     assert resp.status_code == 200, resp.text

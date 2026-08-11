@@ -3,7 +3,13 @@ import uuid
 
 from sqlalchemy import text
 
-from test_transcripts_api import _auth_headers, _grant_entitlement, _seed_author, _seed_transcript, _signup_and_verify
+from test_transcripts_api import (
+    _auth_headers,
+    _grant_transcript_access,
+    _seed_author,
+    _seed_transcript,
+    _signup_and_verify,
+)
 
 
 class _FakeGateway:
@@ -198,7 +204,7 @@ def test_create_order_does_not_reuse_paid_order_for_same_items(client, monkeypat
 
 
 def test_create_order_is_rate_limited_per_user_not_globally(client, monkeypatch, engine):
-    from utils.rate_limiter import RateLimits
+    from apis.rate_limiting.limiter import RateLimits
 
     _use_fake_gateway(monkeypatch)
     token_a, _ = _signup_and_verify(client, monkeypatch, email="ratelimit-orders-a@example.com")
@@ -233,7 +239,7 @@ def test_create_order_rejects_already_owned_transcript(client, monkeypatch, engi
     token, user_id = _signup_and_verify(client, monkeypatch)
     author_id = _seed_author(engine)
     transcript_id = _seed_transcript(engine, author_id)
-    _grant_entitlement(engine, user_id, transcript_id)
+    _grant_transcript_access(engine, user_id, transcript_id)
 
     resp = _create_order(client, token, [transcript_id])
     assert resp.status_code == 400, resp.text
@@ -268,7 +274,7 @@ def test_verify_payment_valid_signature_marks_paid_and_grants_entitlement(client
 
 def test_verify_payment_creates_invoice(client, monkeypatch, engine):
     _use_fake_gateway(monkeypatch)
-    token, user_id = _signup_and_verify(client, monkeypatch)
+    token, _ = _signup_and_verify(client, monkeypatch)
     author_id = _seed_author(engine)
     transcript_id = _seed_transcript(engine, author_id, price=49)
 
@@ -281,11 +287,10 @@ def test_verify_payment_creates_invoice(client, monkeypatch, engine):
 
     with engine.begin() as conn:
         row = conn.execute(
-            text("SELECT order_id, user_id, amount, currency, invoice_number FROM invoices WHERE order_id = :order_id"),
+            text("SELECT order_id, amount, currency, invoice_number FROM receipts WHERE order_id = :order_id"),
             {"order_id": order_id},
         ).fetchone()
     assert row is not None
-    assert row.user_id == user_id
     assert row.amount == 49
     assert row.currency == "USD"
     assert row.invoice_number.startswith("INV-")

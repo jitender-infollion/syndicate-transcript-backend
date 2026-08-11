@@ -5,8 +5,7 @@ from typing import Literal
 from fastapi import HTTPException
 from sqlalchemy import String, cast, func, or_
 
-from apis.models.author import Author
-from apis.models.entitlement import Entitlement, EntitlementStatus
+from apis.models.order import Order, OrderItem, OrderStatus
 from apis.models.transcript import Transcript
 from config import get_settings
 from services.database.postgres.connection import get_session
@@ -14,7 +13,7 @@ from services.storage.signing_client import get_signed_url
 from services.transcript_pdf import generate_transcript_pdf
 from utils.pagination import Page, PaginationParams, build_page, paginate
 
-from .transcripts_helper import SLIM_TRANSCRIPT_COLUMNS, has_active_entitlement, row_to_transcript_list_item
+from .transcripts_helper import SLIM_TRANSCRIPT_COLUMNS, has_transcript_access, row_to_transcript_list_item
 from .transcripts_schema import (
     TranscriptAccessResponse,
     TranscriptDetailResponse,
@@ -30,11 +29,7 @@ def handle_list_transcripts(
 ) -> Page:
     session = get_session()
     try:
-        query = (
-            session.query(*SLIM_TRANSCRIPT_COLUMNS)
-            .join(Author, Transcript.author_id == Author.id)
-            .filter(Transcript.is_active.is_(True))
-        )
+        query = session.query(*SLIM_TRANSCRIPT_COLUMNS).filter(Transcript.is_active.is_(True))
         if domain:
             query = query.filter(Transcript.domain.contains([domain]))
         if geography:
@@ -57,11 +52,7 @@ def handle_list_transcripts(
 def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
     session = get_session()
     try:
-        query = (
-            session.query(*SLIM_TRANSCRIPT_COLUMNS)
-            .join(Author, Transcript.author_id == Author.id)
-            .filter(Transcript.is_active.is_(True))
-        )
+        query = session.query(*SLIM_TRANSCRIPT_COLUMNS).filter(Transcript.is_active.is_(True))
         if filters.domain:
             query = query.filter(Transcript.domain.overlap(filters.domain))
         if filters.geography:
@@ -79,7 +70,7 @@ def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
                 )
             )
         if filters.authorId is not None:
-            query = query.filter(Transcript.author_id == filters.authorId)
+            query = query.filter(Transcript.fk_expert == filters.authorId)
         if filters.minPrice is not None:
             query = query.filter(Transcript.price >= filters.minPrice)
         if filters.maxPrice is not None:
@@ -105,12 +96,14 @@ def handle_list_purchased_transcripts(user_id: int, params: PaginationParams) ->
     try:
         query = (
             session.query(*SLIM_TRANSCRIPT_COLUMNS)
-            .join(Author, Transcript.author_id == Author.id)
-            .join(Entitlement, Entitlement.transcript_id == Transcript.id)
+            .join(OrderItem, OrderItem.transcript_id == Transcript.id)
+            .join(Order, Order.id == OrderItem.order_id)
             .filter(
-                Entitlement.user_id == user_id,
-                Entitlement.status == EntitlementStatus.ACTIVE.value,
+                OrderItem.user_id == user_id,
+                OrderItem.access_permission.is_(False),
+                Order.status == OrderStatus.PAID.value,
             )
+            .distinct()
             .order_by(Transcript.published_at.desc())
         )
         rows, total = paginate(query, params)
@@ -153,7 +146,6 @@ def handle_get_transcript_detail(transcript_id: int) -> TranscriptDetailResponse
     try:
         row = (
             session.query(*SLIM_TRANSCRIPT_COLUMNS)
-            .join(Author, Transcript.author_id == Author.id)
             .filter(Transcript.id == transcript_id, Transcript.is_active.is_(True))
             .first()
         )
@@ -185,7 +177,7 @@ def handle_get_transcript_access(
         if not transcript:
             raise HTTPException(status_code=404, detail="Transcript not found")
 
-        if not has_active_entitlement(session, user_id, transcript_id):
+        if not has_transcript_access(session, user_id, transcript_id):
             raise HTTPException(status_code=403, detail="You do not have access to this transcript.")
 
         if not transcript.final_transcript:
@@ -233,7 +225,7 @@ def handle_get_full_text(user_id: int, transcript_id: int) -> TranscriptFullText
         if not transcript:
             raise HTTPException(status_code=404, detail="Transcript not found")
 
-        if not has_active_entitlement(session, user_id, transcript_id):
+        if not has_transcript_access(session, user_id, transcript_id):
             raise HTTPException(status_code=403, detail="You do not have access to this transcript.")
 
         return TranscriptFullTextResponse(fullText=_build_dev_full_text(transcript))
@@ -266,7 +258,7 @@ def handle_download_transcript(user_id: int, transcript_id: int) -> DownloadResu
         if not transcript:
             raise HTTPException(status_code=404, detail="Transcript not found")
 
-        if not has_active_entitlement(session, user_id, transcript_id):
+        if not has_transcript_access(session, user_id, transcript_id):
             raise HTTPException(status_code=403, detail="You do not have access to this transcript.")
 
         if get_settings().signing_service.is_configured and transcript.final_transcript:

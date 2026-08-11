@@ -5,7 +5,6 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
 from apis.controllers.transcripts.transcripts_helper import SLIM_TRANSCRIPT_COLUMNS, row_to_transcript_list_item
-from apis.models.author import Author
 from apis.models.cart import Cart, CartItem, CartStatus
 from apis.models.transcript import Transcript
 from services.database.postgres.connection import get_session
@@ -41,7 +40,6 @@ def _cart_response(session, cart: Cart | None) -> CartResponse:
         return CartResponse(items=[])
     rows = (
         session.query(*SLIM_TRANSCRIPT_COLUMNS)
-        .join(Author, Transcript.author_id == Author.id)
         .join(CartItem, CartItem.transcript_id == Transcript.id)
         .filter(CartItem.cart_id == cart.id)
         .order_by(CartItem.created_at.desc())

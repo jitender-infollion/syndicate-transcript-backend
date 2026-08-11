@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse
 from apis.controllers.transcripts import transcripts_controller
 from apis.controllers.transcripts.transcripts_schema import TranscriptFilterRequest
 from apis.dependencies import get_current_user_id
+from apis.rate_limiting.dependencies import rate_limit_transcripts_public
 from utils.pagination import PaginationParams
 from utils.response import pdf_response, success_response
 
@@ -12,7 +13,7 @@ from .paths import P
 router = APIRouter(prefix=P.transcripts.BASE, tags=["Transcripts"])
 
 
-@router.get(P.transcripts.LIST)
+@router.get(P.transcripts.LIST, dependencies=[Depends(rate_limit_transcripts_public)])
 def list_transcripts(
     domain: str | None = None,
     geography: str | None = None,
@@ -22,7 +23,7 @@ def list_transcripts(
     return success_response(data=result)
 
 
-@router.post(P.transcripts.FILTER)
+@router.post(P.transcripts.FILTER, dependencies=[Depends(rate_limit_transcripts_public)])
 def filter_transcripts(filters: TranscriptFilterRequest):
     result = transcripts_controller.filter_transcripts(filters)
     return success_response(data=result)
@@ -37,13 +38,13 @@ def list_purchased_transcripts(
     return success_response(data=result)
 
 
-@router.get(P.transcripts.DOMAINS)
+@router.get(P.transcripts.DOMAINS, dependencies=[Depends(rate_limit_transcripts_public)])
 def list_domains():
     result = transcripts_controller.list_domains()
     return success_response(data=result)
 
 
-@router.get(P.transcripts.DETAIL)
+@router.get(P.transcripts.DETAIL, dependencies=[Depends(rate_limit_transcripts_public)])
 def get_transcript_detail(transcript_id: int):
     result = transcripts_controller.get_transcript_detail(transcript_id)
     return success_response(data=result)

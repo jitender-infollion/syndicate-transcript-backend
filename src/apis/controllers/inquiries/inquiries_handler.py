@@ -2,9 +2,8 @@ import logging
 
 from fastapi import HTTPException
 
-from apis.models.inquiries import SupportMessage, TopicRequest
+from apis.models.inquiries import SupportTicket, TopicRequest
 from services.database.postgres.connection import get_session
-from utils.rate_limiter import RateLimits
 
 from .inquiries_schema import SupportMessagePayload, TopicRequestPayload
 
@@ -14,19 +13,16 @@ logger = logging.getLogger(__name__)
 def handle_submit_support_message(
     data: SupportMessagePayload, user_id: int | None, ip_address: str | None
 ) -> None:
-    if ip_address:
-        RateLimits.inquiries.SUPPORT_MESSAGE.check(f"support:{ip_address}")
-
+    # ip_address is unused here now (rate limiting moved to jwt_middleware).
     session = get_session()
     try:
-        session.add(
-            SupportMessage(
-                name=data.name,
-                email=data.email,
-                message=data.message,
-                user_id=user_id,
-            )
+        ticket = SupportTicket(
+            name=data.name,
+            message=data.message,
+            user_id=user_id,
         )
+        ticket.email = data.email
+        session.add(ticket)
         session.commit()
     except HTTPException:
         raise
@@ -41,22 +37,20 @@ def handle_submit_support_message(
 def handle_submit_topic_request(
     data: TopicRequestPayload, user_id: int | None, ip_address: str | None
 ) -> None:
-    if ip_address:
-        RateLimits.inquiries.TOPIC_REQUEST.check(f"topic_request:{ip_address}")
-
+    # ip_address is unused here now (rate limiting moved to jwt_middleware).
     session = get_session()
     try:
-        session.add(
-            TopicRequest(
-                topic=data.topic,
-                domain=data.domain,
-                email=data.email,
-                remark=data.remark,
-                suggested_expert_name=data.suggestedExpertName,
-                suggested_expert_linkedin=data.suggestedExpertLinkedin,
-                user_id=user_id,
-            )
+        request = TopicRequest(
+            name=data.name,
+            topic=data.topic,
+            domain=data.domain,
+            remark=data.remark,
+            suggested_expert_name=data.suggestedExpertName,
+            suggested_expert_linkedin=data.suggestedExpertLinkedin,
+            user_id=user_id,
         )
+        request.email = data.email
+        session.add(request)
         session.commit()
     except HTTPException:
         raise
