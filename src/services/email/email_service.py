@@ -1,8 +1,8 @@
+import base64
 import logging
-import smtplib
-from email.message import EmailMessage
 from pathlib import Path
 
+import httpx
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from config import get_settings
@@ -40,29 +40,39 @@ def _send_email(
 ) -> None:
     email_config = get_settings().email
     if not email_config.is_configured:
-        logger.warning("SMTP is not configured; logging email instead of sending. To: %s | %s", to_email, body)
+        logger.warning("SendGrid is not configured; logging email instead of sending. To: %s | %s", to_email, body)
         return
 
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = email_config.from_email
-    message["To"] = to_email
-    message.set_content(body)
+    content = [{"type": "text/plain", "value": body}]
     if html:
-        message.add_alternative(html, subtype="html")
+        content.append({"type": "text/html", "value": html})
+
+    payload = {
+        "personalizations": [{"to": [{"email": to_email}]}],
+        "from": {"email": email_config.from_email},
+        "subject": subject,
+        "content": content,
+    }
     if attachment_bytes and attachment_filename:
-        message.add_attachment(attachment_bytes, maintype="application", subtype="pdf", filename=attachment_filename)
+        payload["attachments"] = [
+            {
+                "content": base64.b64encode(attachment_bytes).decode(),
+                "filename": attachment_filename,
+                "type": "application/pdf",
+                "disposition": "attachment",
+            }
+        ]
 
     try:
-        if email_config.use_tls:
-            with smtplib.SMTP(email_config.smtp_host, email_config.smtp_port, timeout=10) as server:
-                server.starttls()
-                server.login(email_config.smtp_username, email_config.smtp_password)
-                server.send_message(message)
-        else:
-            with smtplib.SMTP_SSL(email_config.smtp_host, email_config.smtp_port, timeout=10) as server:
-                server.login(email_config.smtp_username, email_config.smtp_password)
-                server.send_message(message)
+        # SendGrid sends over HTTPS (443), not SMTP - some hosts (e.g. Render)
+        # block outbound SMTP entirely, which is why this uses their HTTP API.
+        response = httpx.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {email_config.sendgrid_api_key}"},
+            json=payload,
+            timeout=10,
+        )
+        response.raise_for_status()
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
         raise

@@ -47,6 +47,15 @@ INVALID_LOGIN_DETAIL = "Invalid email or password."
 INVALID_REFRESH_DETAIL = "Your session has expired. Please log in again."
 
 
+def _send_email_best_effort(send_fn, *args) -> None:
+    # Runs after the DB commit - the account/OTP/reset-token already exists,
+    # so an email provider outage shouldn't turn into a failed request.
+    try:
+        send_fn(*args)
+    except Exception:
+        logger.exception("Failed to send email (best effort)")
+
+
 def handle_register(data: RegisterRequest) -> PendingAuthResponse:
     session = get_session()
     try:
@@ -81,7 +90,7 @@ def handle_register(data: RegisterRequest) -> PendingAuthResponse:
             )
             temp_token = create_pending_verification_token(user.id)
             session.commit()
-            send_registration_otp(data.email, otp_code)
+            _send_email_best_effort(send_registration_otp, data.email, otp_code)
             return PendingAuthResponse(tempToken=temp_token)
         except IntegrityError:
             raise HTTPException(status_code=409, detail="An account with this email already exists.") from None
@@ -137,7 +146,7 @@ def handle_resend_otp(temp_token: str) -> PendingAuthResponse:
         )
         new_temp_token = create_pending_verification_token(user.id)
         session.commit()
-        send_registration_otp(user.email, otp_code)
+        _send_email_best_effort(send_registration_otp, user.email, otp_code)
         return PendingAuthResponse(tempToken=new_temp_token)
     except HTTPException:
         raise
@@ -212,7 +221,7 @@ def handle_send_login_otp(email: str) -> PendingAuthResponse:
         )
         temp_token = create_otp_login_token(user.id)
         session.commit()
-        send_login_otp(user.email, otp_code)
+        _send_email_best_effort(send_login_otp, user.email, otp_code)
         return PendingAuthResponse(tempToken=temp_token)
     except HTTPException:
         raise
@@ -268,7 +277,7 @@ def handle_forgot_password(email: str) -> None:
             user.reset_requested_at = datetime.utcnow()
             session.commit()
             reset_link = f"{get_settings().services.frontend_base_url}/reset-password?token={raw_token}"
-            send_password_reset_link(user.email, reset_link)
+            _send_email_best_effort(send_password_reset_link, user.email, reset_link)
     except HTTPException:
         raise
     except Exception:
