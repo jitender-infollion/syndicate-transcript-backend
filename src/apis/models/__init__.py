@@ -1,4 +1,4 @@
-from .cart import Cart, CartItem, CartStatus
+from .cart import Cart, CartItem
 from .coupon import Coupon, CouponRedemption, DiscountType
 from .inquiries import SupportTicket, TopicRequest
 from .order import Order, OrderItem, OrderStatus
@@ -15,7 +15,6 @@ __all__ = [
     "Session",
     "Cart",
     "CartItem",
-    "CartStatus",
     "Coupon",
     "CouponRedemption",
     "DiscountType",

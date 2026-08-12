@@ -10,6 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from services.crypto.email_crypto import encrypt_email, hash_email
+
 
 # revision identifiers, used by Alembic.
 revision: str = '869cd8f5eac6'
@@ -28,7 +30,7 @@ def upgrade() -> None:
     )
 
     op.alter_column('support_tickets', 'email', new_column_name='email_encrypted')
-    op.add_column('support_tickets', sa.Column('email_hash', sa.String(), nullable=False))
+    op.add_column('support_tickets', sa.Column('email_hash', sa.String(), nullable=True))
     op.create_index('ix_support_tickets_status', 'support_tickets', ['status'], unique=False)
     op.create_index('ix_support_tickets_user_id', 'support_tickets', ['user_id'], unique=False)
     op.create_index('ix_support_tickets_email_hash', 'support_tickets', ['email_hash'], unique=False)
@@ -39,6 +41,18 @@ def upgrade() -> None:
     op.create_index('ix_topic_requests_status', 'topic_requests', ['status'], unique=False)
     op.create_index('ix_topic_requests_user_id', 'topic_requests', ['user_id'], unique=False)
     op.create_index('ix_topic_requests_email_hash', 'topic_requests', ['email_hash'], unique=False)
+
+    # The column previously held plaintext emails - encrypt/hash existing rows in place
+    # now that the app-level crypto helpers exist, before enforcing NOT NULL.
+    bind = op.get_bind()
+    for table in ('support_tickets', 'topic_requests'):
+        rows = bind.execute(sa.text(f'SELECT id, email_encrypted FROM {table}')).fetchall()
+        for row_id, plaintext in rows:
+            bind.execute(
+                sa.text(f'UPDATE {table} SET email_encrypted = :enc, email_hash = :hash WHERE id = :id'),
+                {"enc": encrypt_email(plaintext), "hash": hash_email(plaintext), "id": row_id},
+            )
+    op.alter_column('support_tickets', 'email_hash', nullable=False)
 
 
 def downgrade() -> None:

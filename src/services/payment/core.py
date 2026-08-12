@@ -17,8 +17,11 @@ class RazorpayService:
 
     def create_order(self, amount: int, currency: str, receipt: str) -> dict | None:
         try:
+            # Razorpay always expects amount in the currency's smallest unit
+            # (e.g. cents for USD, paise for INR) - amount here is whole units,
+            # matching transcripts.price and Order.amount.
             return self.client.order.create(
-                {"amount": amount, "currency": currency, "receipt": receipt, "payment_capture": 1}
+                {"amount": amount * 100, "currency": currency, "receipt": receipt, "payment_capture": 1}
             )
         except Exception:
             logger.exception("Razorpay order creation failed")

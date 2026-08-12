@@ -40,46 +40,41 @@
     margin-bottom: 10px;
   }
   .company-name {
-    font-size: 20px;
-    color: #4a5da0;
-    margin: 0 0 8px;
+    font-size: 18px;
+    color: #111;
+    margin: 0 0 6px;
     font-weight: 700;
     text-align: left;
   }
   .company-details p {
     margin: 1px 0;
     font-size: 13px;
-    color: #222;
+    color: #444;
   }
   .invoice-title {
-    font-size: 34px;
+    font-size: 24px;
     font-weight: bold;
-    color: #8fa4dd;
+    color: #111;
     letter-spacing: 1px;
     text-align: right;
+    white-space: nowrap;
     margin: 0 0 14px;
   }
 
-  /* Meta table (date/invoice#/customer id) */
+  /* Meta table (date/invoice#/customer id) - plain label: value pairs, no boxes. */
   table.meta {
     border-collapse: collapse;
     margin-left: auto;
   }
   table.meta td {
-    padding: 3px 6px;
+    padding: 2px 0;
     font-size: 13px;
+    text-align: right;
   }
   table.meta td.label {
-    text-align: right;
     font-weight: bold;
-    padding-right: 10px;
+    padding-right: 6px;
     white-space: nowrap;
-  }
-  table.meta td.value {
-    background: #eef0f7;
-    border: 1px solid #c3c9e0;
-    min-width: 110px;
-    text-align: center;
   }
 
   /* Bill To */
@@ -88,15 +83,13 @@
     max-width: 320px;
   }
   .bill-to .bar {
-    background: #4a5da0;
-    color: #fff;
     font-weight: bold;
-    padding: 6px 10px;
     font-size: 13px;
     letter-spacing: 0.5px;
+    color: #111;
   }
   .bill-to p {
-    margin: 3px 0 0 10px;
+    margin: 3px 0 0;
     font-size: 13px;
   }
 
@@ -107,7 +100,7 @@
     margin-bottom: 0;
   }
   table.items thead th {
-    background: #4a5da0;
+    background: #1e2937;
     color: #fff;
     text-align: left;
     padding: 8px 12px;
@@ -123,11 +116,8 @@
   table.items tbody td {
     padding: 7px 12px;
     font-size: 13px;
-    background: #f4f4f4;
+    background: #fff;
     border-bottom: 1px solid #ddd;
-  }
-  table.items tbody tr:nth-child(even) td {
-    background: #eeeeee;
   }
   table.items tbody td.num {
     text-align: right;
@@ -151,11 +141,9 @@
     padding-right: 30px;
   }
   .license .bar {
-    background: #4a5da0;
-    color: #fff;
     font-weight: bold;
-    padding: 6px 10px;
     font-size: 13px;
+    color: #111;
   }
   .license ul {
     margin: 8px 0 0 20px;
@@ -184,7 +172,6 @@
     border-top: 2px solid #000;
     font-weight: bold;
     font-size: 16px;
-    background: #c9d1ec;
     padding-top: 8px;
   }
 
@@ -216,19 +203,19 @@
           </div>
         </td>
         <td>
-          <p class="invoice-title">RECEIPT</p>
+          <p class="invoice-title">PAYMENT RECEIPT</p>
           <table class="meta">
             <tr>
-              <td class="label">DATE</td>
-              <td class="value">{{ date }}</td>
+              <td class="label">Date:</td>
+              <td>{{ date }}</td>
             </tr>
             <tr>
-              <td class="label">RECEIPT #</td>
-              <td class="value">{{ invoice_number }}</td>
+              <td class="label">Invoice No:</td>
+              <td>{{ invoice_number }}</td>
             </tr>
             <tr>
-              <td class="label">CUSTOMER ID</td>
-              <td class="value">{{ customer_id }}</td>
+              <td class="label">Customer ID:</td>
+              <td>{{ customer_id }}</td>
             </tr>
           </table>
         </td>

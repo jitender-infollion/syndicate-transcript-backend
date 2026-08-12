@@ -1,5 +1,5 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Integer, JSON, String, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 from services.database.postgres.connection import Base
 
@@ -22,7 +22,7 @@ class Transcript(Base):
     domain = Column(ARRAY(String), nullable=True)
     geography = Column(ARRAY(String), nullable=True)
     preview = Column(Text, nullable=True)
-    final_transcript = Column(JSON, nullable=True)
+    final_transcript = Column(JSONB, nullable=True)
     key_insight = Column(ARRAY(String), nullable=True)
     published_at = Column(DateTime, nullable=True)
     approved_at = Column(DateTime, nullable=True)

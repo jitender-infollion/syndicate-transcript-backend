@@ -19,10 +19,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('transcripts', sa.Column('fk_expert', sa.BigInteger(), nullable=False))
+    op.add_column('transcripts', sa.Column('fk_expert', sa.BigInteger(), nullable=True))
     op.add_column('transcripts', sa.Column('expert_name', sa.String(), nullable=True))
     op.add_column('transcripts', sa.Column('designation', sa.String(), nullable=True))
     op.add_column('transcripts', sa.Column('years_of_experience', sa.Integer(), nullable=True))
+
+    # Backfill from the author_id/authors data being retired, so existing rows satisfy the NOT NULL below.
+    op.execute('UPDATE transcripts SET fk_expert = author_id')
+    op.execute(
+        "UPDATE transcripts SET expert_name = authors.name, designation = authors.designation "
+        "FROM authors WHERE authors.id = transcripts.author_id"
+    )
+    op.alter_column('transcripts', 'fk_expert', nullable=False)
     op.create_index('ix_transcripts_fk_expert', 'transcripts', ['fk_expert'], unique=False)
 
     op.drop_index('ix_transcripts_author_id', table_name='transcripts')

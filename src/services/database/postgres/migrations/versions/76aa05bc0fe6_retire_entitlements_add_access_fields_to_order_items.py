@@ -19,12 +19,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('order_items', sa.Column('user_id', sa.Integer(), nullable=False))
-    op.add_column('order_items', sa.Column('currency', sa.String(), nullable=False))
+    op.add_column('order_items', sa.Column('user_id', sa.Integer(), nullable=True))
+    op.add_column('order_items', sa.Column('currency', sa.String(), nullable=True))
     op.add_column(
         'order_items',
         sa.Column('access_permission', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     )
+
+    # Backfill from the parent order, so existing rows satisfy the NOT NULL constraints below.
+    op.execute(
+        "UPDATE order_items SET user_id = orders.user_id, currency = orders.currency "
+        "FROM orders WHERE orders.id = order_items.order_id"
+    )
+    op.alter_column('order_items', 'user_id', nullable=False)
+    op.alter_column('order_items', 'currency', nullable=False)
+
     op.create_foreign_key('order_items_user_id_fkey', 'order_items', 'users', ['user_id'], ['id'])
     op.create_index('ix_order_items_user_id', 'order_items', ['user_id'], unique=False)
     op.create_index('ix_order_items_transcript_id', 'order_items', ['transcript_id'], unique=False)

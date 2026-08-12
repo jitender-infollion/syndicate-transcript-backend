@@ -1,33 +1,21 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, String, UniqueConstraint, text
 
 from services.database.postgres.connection import Base
 
-from .schema import CartStatus
-
 
 # guest_id is a backend-issued cookie value for unauthenticated carts.
+# One cart per user (or per guest), reused for the account's lifetime -
+# never recreated, just emptied and refilled on the next add-to-cart.
 class Cart(Base):
     __tablename__ = "carts"
     __table_args__ = (
-        Index("ix_carts_user_id_status", "user_id", "status"),
-        Index(
-            "uq_carts_active_user",
-            "user_id",
-            unique=True,
-            postgresql_where=text("status = 'active' AND user_id IS NOT NULL"),
-        ),
-        Index(
-            "uq_carts_active_guest",
-            "guest_id",
-            unique=True,
-            postgresql_where=text("status = 'active' AND guest_id IS NOT NULL"),
-        ),
+        UniqueConstraint("user_id", name="uq_carts_user_id"),
+        UniqueConstraint("guest_id", name="uq_carts_guest_id"),
     )
 
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
     guest_id = Column(String, nullable=True, index=True)
-    status = Column(String, nullable=False, default=CartStatus.ACTIVE.value, server_default=CartStatus.ACTIVE.value)
     created_at = Column(DateTime, server_default=text("now()"), nullable=True)
     expires_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, nullable=True)

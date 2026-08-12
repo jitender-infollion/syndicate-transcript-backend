@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from apis.models.order import Order, OrderStatus
+from apis.models.cart import Cart, CartItem
+from apis.models.order import Order, OrderItem, OrderStatus
 from apis.models.payment import Payment, PaymentStatus
 from apis.models.receipt import Receipt
 
@@ -15,6 +16,22 @@ def create_receipt(session, order: Order, paid_at: datetime) -> Receipt:
     session.add(receipt)
     session.flush()
     return receipt
+
+
+# The cart row itself is never deleted or recreated - just emptied of whatever
+# was just bought, so it's ready to refill on the next add-to-cart.
+def clear_purchased_cart_items(session, order: Order) -> None:
+    cart = session.query(Cart).filter(Cart.user_id == order.user_id).first()
+    if cart is None:
+        return
+    purchased_ids = {
+        row[0] for row in session.query(OrderItem.transcript_id).filter(OrderItem.order_id == order.id).all()
+    }
+    if not purchased_ids:
+        return
+    session.query(CartItem).filter(
+        CartItem.cart_id == cart.id, CartItem.transcript_id.in_(purchased_ids)
+    ).delete(synchronize_session=False)
 
 
 def transition_to_paid(
@@ -41,6 +58,7 @@ def transition_to_paid(
             }
         )
         create_receipt(session, order, paid_at)
+        clear_purchased_cart_items(session, order)
     return bool(rowcount)
 
 

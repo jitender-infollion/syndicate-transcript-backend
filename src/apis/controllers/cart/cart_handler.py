@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
 from apis.controllers.transcripts.transcripts_helper import SLIM_TRANSCRIPT_COLUMNS, row_to_transcript_list_item
-from apis.models.cart import Cart, CartItem, CartStatus
+from apis.models.cart import Cart, CartItem
 from apis.models.transcript import Transcript
 from services.database.postgres.connection import get_session
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_cart(session, user_id: int | None, guest_id: str | None, *, create: bool) -> Cart | None:
-    query = session.query(Cart).filter(Cart.status == CartStatus.ACTIVE.value)
+    query = session.query(Cart)
     if user_id is not None:
         cart = query.filter(Cart.user_id == user_id).first()
     elif guest_id:
@@ -27,7 +27,6 @@ def _get_cart(session, user_id: int | None, guest_id: str | None, *, create: boo
         cart = Cart(
             user_id=user_id,
             guest_id=guest_id if user_id is None else None,
-            status=CartStatus.ACTIVE.value,
             expires_at=datetime.utcnow() + timedelta(days=180) if user_id is None else None,
         )
         session.add(cart)

@@ -15,7 +15,7 @@ from services.email.email_service import send_invoice_email
 from services.payment import RazorpayService
 from services.receipt import generate_receipt_pdf
 
-from .orders_helper import create_receipt, transition_to_failed, transition_to_paid
+from .orders_helper import clear_purchased_cart_items, create_receipt, transition_to_failed, transition_to_paid
 from .orders_schema import CreateOrderResponse, FreeOrderResponse, OrderSummary, VerifyPaymentResponse
 
 logger = logging.getLogger(__name__)
@@ -136,6 +136,7 @@ class OrdersHandler:
                 session.flush()
 
                 create_receipt(session, order, paid_at)
+                clear_purchased_cart_items(session, order)
 
                 try:
                     session.commit()
@@ -156,7 +157,6 @@ class OrdersHandler:
 
             receipt = f"order-{user_id}-{int(datetime.utcnow().timestamp())}"
 
-            # amount is whole units here, matching transcripts.price - not Razorpay's usual paise.
             gateway_order = self.payment_service.create_order(amount, currency, receipt)
             if gateway_order is None:
                 raise HTTPException(status_code=502, detail="Could not start payment. Please try again.")
