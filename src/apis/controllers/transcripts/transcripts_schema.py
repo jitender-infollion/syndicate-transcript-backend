@@ -1,34 +1,31 @@
+import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from utils.pagination import MAX_PAGE_SIZE
 
 
 class AuthorSummary(BaseModel):
+    # id is fk_expert - an id from the separate external expert-management system,
+    # not a local UUID primary key. Intentionally left as int (see Transcript.fk_expert).
     id: int
     name: str | None
     designation: str | None
     yearsOfExperience: int | None
 
 
-class FinalTranscriptRef(BaseModel):
-    url: str
-    filename: str
-
-
 class TranscriptListItem(BaseModel):
-    id: int
+    id: uuid.UUID
     topic: str | None
-    domain: list[str]
-    geography: list[str]
+    domains: list[str]
+    geographies: list[str]
     preview: str | None
-    finalTranscript: FinalTranscriptRef | None
-    keyInsight: list[str]
+    keyInsights: list[str]
     price: int
     author: AuthorSummary | None
     isActive: bool
     publishedAt: datetime | None
-    approvedAt: datetime | None
-    createdAt: datetime | None
 
 
 class TranscriptDetailResponse(TranscriptListItem):
@@ -44,12 +41,19 @@ class TranscriptFullTextResponse(BaseModel):
 
 
 class TranscriptFilterRequest(BaseModel):
-    domain: list[str] | None = None
-    geography: list[str] | None = None
+    domains: list[str] | None = None
+    geographies: list[str] | None = None
     topic: str | None = None
-    search: str | None = None  # free-text across topic/preview/domain/geography
-    authorId: int | None = None
+    search: str | None = None  # free-text across topic/preview/domains/geographies
+    authorId: int | None = None  # fk_expert (external expert-management id) - intentionally not a UUID
     minPrice: int | None = None
     maxPrice: int | None = None
+    publishedAfter: datetime | None = None
     page: int = Field(default=1, ge=1)
-    limit: int = Field(default=20, ge=1, le=100)
+    limit: int = Field(default=20, ge=1)
+
+    @field_validator("limit")
+    @classmethod
+    def _cap_limit(cls, v: int) -> int:
+        # Capped rather than rejected - a client asking for 5000 just gets MAX_PAGE_SIZE back.
+        return min(v, MAX_PAGE_SIZE)

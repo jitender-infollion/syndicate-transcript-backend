@@ -1,4 +1,7 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, text
+import uuid
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, text
+from sqlalchemy.dialects.postgresql import UUID
 
 from services.database.postgres.connection import Base
 
@@ -9,7 +12,7 @@ class Coupon(Base):
         Index("ix_coupons_is_active_valid_from_valid_until", "is_active", "valid_from", "valid_until"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
     code = Column(String, nullable=False, unique=True, index=True)
     discount_type = Column(String, nullable=False)
     discount_value = Column(Integer, nullable=False)
@@ -30,9 +33,9 @@ class CouponRedemption(Base):
     __tablename__ = "coupon_redemptions"
     __table_args__ = (Index("ix_coupon_redemptions_coupon_id_user_id", "coupon_id", "user_id"),)
 
-    id = Column(BigInteger, primary_key=True, index=True)
-    coupon_id = Column(BigInteger, ForeignKey("coupons.id"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
-    order_id = Column(BigInteger, ForeignKey("orders.id"), nullable=False, unique=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    coupon_id = Column(UUID(as_uuid=True), ForeignKey("coupons.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False, unique=True, index=True)
     discount_applied = Column(Integer, nullable=False)
     redeemed_at = Column(DateTime, server_default=text("now()"), nullable=True)

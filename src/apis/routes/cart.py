@@ -1,4 +1,5 @@
 import secrets
+import uuid
 
 from fastapi import APIRouter, Depends, Request, Response
 
@@ -25,7 +26,7 @@ def _resolve_guest_id(request: Request, response: Response) -> str:
 
 
 @router.get(P.cart.ROOT)
-def get_cart(request: Request, response: Response, user_id: int | None = Depends(get_current_user_id_optional)):
+def get_cart(request: Request, response: Response, user_id: uuid.UUID | None = Depends(get_current_user_id_optional)):
     guest_id = None if user_id else _resolve_guest_id(request, response)
     result = cart_controller.get_cart(user_id, guest_id)
     return success_response(data=result)
@@ -36,7 +37,7 @@ def add_cart_item(
     body: AddCartItemRequest,
     request: Request,
     response: Response,
-    user_id: int | None = Depends(get_current_user_id_optional),
+    user_id: uuid.UUID | None = Depends(get_current_user_id_optional),
 ):
     guest_id = None if user_id else _resolve_guest_id(request, response)
     result = cart_controller.add_item(user_id, guest_id, body.transcriptId)
@@ -45,10 +46,10 @@ def add_cart_item(
 
 @router.delete(P.cart.ITEM_DETAIL)
 def remove_cart_item(
-    transcript_id: int,
+    transcript_id: uuid.UUID,
     request: Request,
     response: Response,
-    user_id: int | None = Depends(get_current_user_id_optional),
+    user_id: uuid.UUID | None = Depends(get_current_user_id_optional),
 ):
     guest_id = None if user_id else _resolve_guest_id(request, response)
     result = cart_controller.remove_item(user_id, guest_id, transcript_id)
@@ -56,7 +57,7 @@ def remove_cart_item(
 
 
 @router.delete(P.cart.ROOT)
-def clear_cart(request: Request, response: Response, user_id: int | None = Depends(get_current_user_id_optional)):
+def clear_cart(request: Request, response: Response, user_id: uuid.UUID | None = Depends(get_current_user_id_optional)):
     guest_id = None if user_id else _resolve_guest_id(request, response)
     result = cart_controller.clear_cart(user_id, guest_id)
     return success_response(data=result)
@@ -67,7 +68,7 @@ def merge_cart(
     body: MergeCartRequest,
     request: Request,
     response: Response,
-    user_id: int = Depends(get_current_user_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     guest_id = request.cookies.get(GUEST_CART_COOKIE_NAME)  # read-only, never created here
     result = cart_controller.merge_cart(user_id, guest_id, body.items)

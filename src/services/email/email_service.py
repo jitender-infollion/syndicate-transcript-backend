@@ -14,15 +14,17 @@ _jinja_env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=sel
 
 OTP_TTL_MINUTES = 10
 
-# Publicly-reachable URL, not derived from frontend_base_url (unreachable from an email client in dev).
-_LOGO_URL = "https://www.infollion.com/imported/logo-new.png"
+# Embedded inline (CID) rather than linked by URL - remote images get blocked
+# by default in most email clients (Gmail, Outlook), while inline images
+# don't since there's no external request for the client to block.
+_LOGO_CID = "logo"
+_LOGO_BYTES = (Path(__file__).parent / "assets" / "infollion_logo.png").read_bytes()
 
 
 def _render_otp_email(title: str, heading: str, description: str, otp: str) -> str:
     return _jinja_env.get_template("otp_code.html").render(
         title=title,
         render_logo=True,
-        logo_url=_LOGO_URL,
         heading=heading,
         description=description,
         code=otp,
@@ -35,6 +37,7 @@ def _send_email(
     subject: str,
     body: str,
     html: str | None = None,
+    include_logo: bool = False,
     attachment_bytes: bytes | None = None,
     attachment_filename: str | None = None,
 ) -> None:
@@ -53,15 +56,29 @@ def _send_email(
         "subject": subject,
         "content": content,
     }
+
+    attachments = []
+    if include_logo:
+        attachments.append(
+            {
+                "content": base64.b64encode(_LOGO_BYTES).decode(),
+                "filename": "logo.png",
+                "type": "image/png",
+                "disposition": "inline",
+                "content_id": _LOGO_CID,
+            }
+        )
     if attachment_bytes and attachment_filename:
-        payload["attachments"] = [
+        attachments.append(
             {
                 "content": base64.b64encode(attachment_bytes).decode(),
                 "filename": attachment_filename,
                 "type": "application/pdf",
                 "disposition": "attachment",
             }
-        ]
+        )
+    if attachments:
+        payload["attachments"] = attachments
 
     try:
         # SendGrid sends over HTTPS (443), not SMTP - some hosts (e.g. Render)
@@ -90,6 +107,7 @@ def send_registration_otp(email: str, otp: str) -> None:
         subject="Your verification code",
         body=f"Your OTP is {otp}. It expires in {OTP_TTL_MINUTES} minutes.",
         html=html,
+        include_logo=True,
     )
 
 
@@ -105,6 +123,7 @@ def send_login_otp(email: str, otp: str) -> None:
         subject="Your login code",
         body=f"Your login OTP is {otp}. It expires in {OTP_TTL_MINUTES} minutes.",
         html=html,
+        include_logo=True,
     )
 
 
@@ -119,7 +138,6 @@ def send_password_reset_link(email: str, reset_link: str) -> None:
 def send_invoice_email(email: str, name: str | None, invoice_number: str, pdf_bytes: bytes) -> None:
     html = _jinja_env.get_template("invoice_email.html").render(
         title="Your Infollion receipt",
-        logo_url=_LOGO_URL,
         name=name,
         invoice_number=invoice_number,
     )
@@ -128,6 +146,7 @@ def send_invoice_email(email: str, name: str | None, invoice_number: str, pdf_by
         subject=f"Your Infollion receipt - {invoice_number}",
         body=f"Thanks for your purchase! Your receipt ({invoice_number}) is attached.",
         html=html,
+        include_logo=True,
         attachment_bytes=pdf_bytes,
         attachment_filename=f"{invoice_number}.pdf",
     )

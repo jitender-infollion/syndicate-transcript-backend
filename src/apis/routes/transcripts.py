@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 
@@ -15,11 +17,11 @@ router = APIRouter(prefix=P.transcripts.BASE, tags=["Transcripts"])
 
 @router.get(P.transcripts.LIST, dependencies=[Depends(rate_limit_transcripts_public)])
 def list_transcripts(
-    domain: str | None = None,
-    geography: str | None = None,
+    domains: str | None = None,
+    geographies: str | None = None,
     params: PaginationParams = Depends(),
 ):
-    result = transcripts_controller.list_transcripts(params, domain, geography)
+    result = transcripts_controller.list_transcripts(params, domains, geographies)
     return success_response(data=result)
 
 
@@ -32,7 +34,7 @@ def filter_transcripts(filters: TranscriptFilterRequest):
 @router.get(P.transcripts.MY_PURCHASED)
 def list_purchased_transcripts(
     params: PaginationParams = Depends(),
-    user_id: int = Depends(get_current_user_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     result = transcripts_controller.list_purchased_transcripts(user_id, params)
     return success_response(data=result)
@@ -45,19 +47,19 @@ def list_domains():
 
 
 @router.get(P.transcripts.DETAIL, dependencies=[Depends(rate_limit_transcripts_public)])
-def get_transcript_detail(transcript_id: int):
+def get_transcript_detail(transcript_id: uuid.UUID):
     result = transcripts_controller.get_transcript_detail(transcript_id)
     return success_response(data=result)
 
 
 @router.get(P.transcripts.VIEW)
-def view_transcript(transcript_id: int, user_id: int = Depends(get_current_user_id)):
+def view_transcript(transcript_id: uuid.UUID, user_id: uuid.UUID = Depends(get_current_user_id)):
     result = transcripts_controller.get_transcript_access(user_id, transcript_id, mode="view")
     return success_response(data=result)
 
 
 @router.get(P.transcripts.DOWNLOAD)
-def download_transcript(transcript_id: int, user_id: int = Depends(get_current_user_id)):
+def download_transcript(transcript_id: uuid.UUID, user_id: uuid.UUID = Depends(get_current_user_id)):
     result = transcripts_controller.download_transcript(user_id, transcript_id)
     if result.redirect_url:
         return RedirectResponse(url=result.redirect_url, status_code=307)
@@ -65,6 +67,6 @@ def download_transcript(transcript_id: int, user_id: int = Depends(get_current_u
 
 
 @router.get(P.transcripts.FULL_TEXT)
-def get_full_text(transcript_id: int, user_id: int = Depends(get_current_user_id)):
+def get_full_text(transcript_id: uuid.UUID, user_id: uuid.UUID = Depends(get_current_user_id)):
     result = transcripts_controller.get_full_text(user_id, transcript_id)
     return success_response(data=result)

@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import HTTPException, Request
 
 from apis.controllers.orders.orders_controller import OrdersController
@@ -6,18 +8,18 @@ from config import get_settings
 from services.payment import RazorpayService
 
 
-def get_current_user_id(request: Request) -> int:
+def get_current_user_id(request: Request) -> uuid.UUID:
     """User id attached by the JWT middleware. Use on every protected route."""
     user_id = getattr(request.state, "user_id", None)
     if not user_id:
         raise HTTPException(status_code=401, detail="User identity missing from session.")
-    return int(user_id)
+    return uuid.UUID(user_id)
 
 
-def get_current_user_id_optional(request: Request) -> int | None:
+def get_current_user_id_optional(request: Request) -> uuid.UUID | None:
     # Like get_current_user_id, but None instead of 401 - for soft-auth routes (e.g. cart).
     user_id = getattr(request.state, "user_id", None)
-    return int(user_id) if user_id else None
+    return uuid.UUID(user_id) if user_id else None
 
 
 _orders_controller: OrdersController | None = None

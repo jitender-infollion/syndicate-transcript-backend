@@ -44,7 +44,6 @@ def build_transcript(seed_id: int) -> Transcript:
     geography = random.sample(GEOGRAPHIES, k=random.randint(1, 4))
     topic = f"{domain[0]} trends heading into 2026 (seed-{seed_id})"
     published_at = datetime.utcnow() - timedelta(days=random.randint(0, 30))
-    approved_at = published_at - timedelta(days=random.randint(1, 5))
     slug = domain[0].lower().replace(" ", "-")
 
     return Transcript(
@@ -53,8 +52,8 @@ def build_transcript(seed_id: int) -> Transcript:
         designation=random.choice(DESIGNATIONS),
         years_of_experience=random.randint(3, 20),
         topic=topic,
-        domain=domain,
-        geography=geography,
+        domains=domain,
+        geographies=geography,
         preview=(
             f"This conversation covers the practical realities of {domain[0]} today, "
             "including where budgets are actually going and what is getting cut."
@@ -63,15 +62,15 @@ def build_transcript(seed_id: int) -> Transcript:
             "url": f"s3://dummy-bucket/transcripts/seed-{seed_id}.pdf",
             "filename": f"{slug}-seed-{seed_id}.pdf",
         },
-        key_insight=[
+        key_insights=[
             f"Where budgets are actually shifting in {domain[0]}",
             f"The vendor evaluation criteria that actually matter for {domain[0]}",
             f"What leadership tracks to greenlight {domain[0]} initiatives",
         ],
         price=random.randint(20, 500),
+        currency="INR",
         is_active=True,
         published_at=published_at,
-        approved_at=approved_at,
     )
 
 

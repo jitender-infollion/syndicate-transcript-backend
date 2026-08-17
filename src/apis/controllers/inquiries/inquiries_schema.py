@@ -1,3 +1,6 @@
+import uuid
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -15,3 +18,11 @@ class TopicRequestPayload(BaseModel):
     remark: str | None = Field(default=None, max_length=2000)
     suggestedExpertName: str | None = Field(default=None, max_length=200)
     suggestedExpertLinkedin: str | None = Field(default=None, max_length=500)
+
+
+class TopicRequestListItem(BaseModel):
+    id: uuid.UUID
+    topic: str | None
+    domain: str
+    status: str
+    createdAt: datetime | None

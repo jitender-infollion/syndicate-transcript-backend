@@ -7,9 +7,11 @@ from apis.models.receipt import Receipt
 
 
 def create_receipt(session, order: Order, paid_at: datetime) -> Receipt:
+    # order.id is a UUID, not a zero-padded int - use a short hex segment instead
+    # of the old `:05d` numeric formatting.
     receipt = Receipt(
         order_id=order.id,
-        invoice_number=f"INV-{paid_at:%Y%m%d}-{order.id:05d}",
+        invoice_number=f"INV-{paid_at:%Y%m%d}-{order.id.hex[:8].upper()}",
         amount=order.amount,
         currency=order.currency,
     )

@@ -17,6 +17,9 @@ from utils.response import error_response
 setup_logging()
 logger = logging.getLogger(__name__)
 
+if not get_settings().email.is_configured:
+    logger.warning("SendGrid is not configured (SENDGRID_API_KEY/FROM_EMAIL) - emails will not be sent.")
+
 _docs_enabled = get_settings().services.enable_docs
 app = FastAPI(
     title="Syndicate Transcript Backend",

@@ -1,4 +1,5 @@
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Literal
 
@@ -25,15 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 def handle_list_transcripts(
-    params: PaginationParams, domain: str | None = None, geography: str | None = None
+    params: PaginationParams, domains: str | None = None, geographies: str | None = None
 ) -> Page:
     session = get_session()
     try:
         query = session.query(*SLIM_TRANSCRIPT_COLUMNS).filter(Transcript.is_active.is_(True))
-        if domain:
-            query = query.filter(Transcript.domain.contains([domain]))
-        if geography:
-            query = query.filter(Transcript.geography.contains([geography]))
+        if domains:
+            query = query.filter(Transcript.domains.contains([domains]))
+        if geographies:
+            query = query.filter(Transcript.geographies.contains([geographies]))
         query = query.order_by(Transcript.published_at.desc())
 
         rows, total = paginate(query, params)
@@ -53,10 +54,10 @@ def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
     session = get_session()
     try:
         query = session.query(*SLIM_TRANSCRIPT_COLUMNS).filter(Transcript.is_active.is_(True))
-        if filters.domain:
-            query = query.filter(Transcript.domain.overlap(filters.domain))
-        if filters.geography:
-            query = query.filter(Transcript.geography.overlap(filters.geography))
+        if filters.domains:
+            query = query.filter(Transcript.domains.overlap(filters.domains))
+        if filters.geographies:
+            query = query.filter(Transcript.geographies.overlap(filters.geographies))
         if filters.topic:
             query = query.filter(Transcript.topic.ilike(f"%{filters.topic}%"))
         if filters.search:
@@ -65,8 +66,8 @@ def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
                 or_(
                     Transcript.topic.ilike(term),
                     Transcript.preview.ilike(term),
-                    cast(Transcript.domain, String).ilike(term),
-                    cast(Transcript.geography, String).ilike(term),
+                    cast(Transcript.domains, String).ilike(term),
+                    cast(Transcript.geographies, String).ilike(term),
                 )
             )
         if filters.authorId is not None:
@@ -75,6 +76,8 @@ def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
             query = query.filter(Transcript.price >= filters.minPrice)
         if filters.maxPrice is not None:
             query = query.filter(Transcript.price <= filters.maxPrice)
+        if filters.publishedAfter is not None:
+            query = query.filter(Transcript.published_at >= filters.publishedAfter)
         query = query.order_by(Transcript.published_at.desc())
 
         params = PaginationParams(page=filters.page, limit=filters.limit)
@@ -91,7 +94,7 @@ def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
         session.close()
 
 
-def handle_list_purchased_transcripts(user_id: int, params: PaginationParams) -> Page:
+def handle_list_purchased_transcripts(user_id: uuid.UUID, params: PaginationParams) -> Page:
     session = get_session()
     try:
         query = (
@@ -122,10 +125,10 @@ def handle_list_purchased_transcripts(user_id: int, params: PaginationParams) ->
 def handle_list_domains() -> list[str]:
     session = get_session()
     try:
-        unnested = func.unnest(Transcript.domain).label("domain")
+        unnested = func.unnest(Transcript.domains).label("domain")
         rows = (
             session.query(unnested)
-            .filter(Transcript.is_active.is_(True), Transcript.domain.isnot(None))
+            .filter(Transcript.is_active.is_(True), Transcript.domains.isnot(None))
             .distinct()
             .order_by(unnested)
             .all()
@@ -141,7 +144,7 @@ def handle_list_domains() -> list[str]:
         session.close()
 
 
-def handle_get_transcript_detail(transcript_id: int) -> TranscriptDetailResponse:
+def handle_get_transcript_detail(transcript_id: uuid.UUID) -> TranscriptDetailResponse:
     session = get_session()
     try:
         row = (
@@ -165,7 +168,7 @@ def handle_get_transcript_detail(transcript_id: int) -> TranscriptDetailResponse
 
 
 def handle_get_transcript_access(
-    user_id: int, transcript_id: int, mode: Literal["view", "download"]
+    user_id: uuid.UUID, transcript_id: uuid.UUID, mode: Literal["view", "download"]
 ) -> TranscriptAccessResponse:
     session = get_session()
     try:
@@ -202,9 +205,9 @@ def _build_dev_full_text(transcript: Transcript) -> str:
     if transcript.preview:
         lines.append(transcript.preview)
         lines.append("")
-    if transcript.key_insight:
+    if transcript.key_insights:
         lines.append("Key insights covered:")
-        lines.extend(f"- {insight}" for insight in transcript.key_insight)
+        lines.extend(f"- {insight}" for insight in transcript.key_insights)
         lines.append("")
     lines.append(
         "[Dev placeholder: this environment has no stored full transcript body yet - "
@@ -214,7 +217,7 @@ def _build_dev_full_text(transcript: Transcript) -> str:
     return "\n".join(lines)
 
 
-def handle_get_full_text(user_id: int, transcript_id: int) -> TranscriptFullTextResponse:
+def handle_get_full_text(user_id: uuid.UUID, transcript_id: uuid.UUID) -> TranscriptFullTextResponse:
     session = get_session()
     try:
         transcript = (
@@ -247,7 +250,7 @@ class DownloadResult:
     pdf_bytes: bytes | None = None
 
 
-def handle_download_transcript(user_id: int, transcript_id: int) -> DownloadResult:
+def handle_download_transcript(user_id: uuid.UUID, transcript_id: uuid.UUID) -> DownloadResult:
     session = get_session()
     try:
         transcript = (

@@ -1,6 +1,8 @@
+import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Integer, String, Text, text
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from services.crypto.email_crypto import decrypt_email, encrypt_email, hash_email
@@ -16,7 +18,7 @@ class User(Base):
         Index("ix_users_anonymized_at_null", "anonymized_at", postgresql_where=text("anonymized_at IS NULL")),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
     name = Column(String, nullable=True)
     email_encrypted = Column(Text, nullable=False)
     email_hash = Column(String, unique=True, nullable=False, index=True)

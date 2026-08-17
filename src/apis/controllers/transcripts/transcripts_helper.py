@@ -1,22 +1,21 @@
+import uuid
+
 from apis.models.order import Order, OrderItem, OrderStatus
 from apis.models.transcript import Transcript
 
-from .transcripts_schema import AuthorSummary, FinalTranscriptRef, TranscriptListItem
+from .transcripts_schema import AuthorSummary, TranscriptListItem
 
 # Shared with cart/orders - same slim transcript+author shape used there too.
 SLIM_TRANSCRIPT_COLUMNS = (
     Transcript.id,
     Transcript.topic,
-    Transcript.domain,
-    Transcript.geography,
+    Transcript.domains,
+    Transcript.geographies,
     Transcript.preview,
-    Transcript.final_transcript,
-    Transcript.key_insight,
+    Transcript.key_insights,
     Transcript.price,
     Transcript.is_active,
     Transcript.published_at,
-    Transcript.approved_at,
-    Transcript.created_at,
     Transcript.fk_expert,
     Transcript.expert_name,
     Transcript.designation,
@@ -24,7 +23,7 @@ SLIM_TRANSCRIPT_COLUMNS = (
 )
 
 
-def has_transcript_access(session, user_id: int | None, transcript_id: int) -> bool:
+def has_transcript_access(session, user_id: uuid.UUID | None, transcript_id: uuid.UUID) -> bool:
     if user_id is None:
         return False
     return (
@@ -45,16 +44,13 @@ def row_to_transcript_list_item(row) -> TranscriptListItem:
     (
         transcript_id,
         topic,
-        domain,
-        geography,
+        domains,
+        geographies,
         preview,
-        final_transcript,
-        key_insight,
+        key_insights,
         price,
         is_active,
         published_at,
-        approved_at,
-        created_at,
         fk_expert,
         expert_name,
         designation,
@@ -63,23 +59,15 @@ def row_to_transcript_list_item(row) -> TranscriptListItem:
     author = AuthorSummary(
         id=fk_expert, name=expert_name, designation=designation, yearsOfExperience=years_of_experience
     )
-    final_transcript_ref = (
-        FinalTranscriptRef(url=final_transcript["url"], filename=final_transcript["filename"])
-        if final_transcript
-        else None
-    )
     return TranscriptListItem(
         id=transcript_id,
         topic=topic,
-        domain=domain or [],
-        geography=geography or [],
+        domains=domains or [],
+        geographies=geographies or [],
         preview=preview,
-        finalTranscript=final_transcript_ref,
-        keyInsight=key_insight or [],
+        keyInsights=key_insights or [],
         price=int(price),
         author=author,
         isActive=is_active,
         publishedAt=published_at,
-        approvedAt=approved_at,
-        createdAt=created_at,
     )

@@ -1,4 +1,7 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, Text, text
+import uuid
+
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 
 from services.crypto.email_crypto import decrypt_email, encrypt_email, hash_email
@@ -17,12 +20,12 @@ class SupportTicket(Base):
         Index("ix_support_tickets_email_hash", "email_hash"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     email_encrypted = Column(String, nullable=False)
     email_hash = Column(String, nullable=False)
     message = Column(Text, nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     status = Column(String, nullable=False, default=RequestStatus.OPEN.value, server_default=RequestStatus.OPEN.value)
     created_at = Column(DateTime, server_default=text("now()"), nullable=True)
 
@@ -46,8 +49,8 @@ class TopicRequest(Base):
         Index("ix_topic_requests_email_hash", "email_hash"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     name = Column(String, nullable=True)
     email_encrypted = Column(String, nullable=True)
     email_hash = Column(String, nullable=True)

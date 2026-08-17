@@ -61,3 +61,4 @@ class P:
     class topics:
         BASE = _TOPICS
         REQUEST = "/request"
+        MY_REQUESTS = "/my-requests"
