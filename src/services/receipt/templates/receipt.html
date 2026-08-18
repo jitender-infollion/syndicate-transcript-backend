@@ -10,276 +10,258 @@
     color: #222;
     background: #fff;
     margin: 0;
-    padding: 40px 60px;
+    padding: 30px 40px;
     font-size: 14px;
   }
-  .invoice-wrapper {
-    max-width: 950px;
+  .card {
+    max-width: 900px;
     margin: 0 auto;
   }
+  .section {
+    padding: 26px 40px;
+  }
+  hr.divider {
+    border: none;
+    border-top: 1px solid #eceae5;
+    margin: 0;
+  }
+  .cream { background: #fff; }
 
-  /* Header - table-based (not flex): WeasyPrint's flexbox can misjudge
-     available width and wrap long text unexpectedly; tables size reliably. */
-  table.header {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 20px;
-  }
-  table.header td {
-    vertical-align: top;
-    padding: 0;
-  }
-  table.header td.company-cell {
-    width: 60%;
-  }
+  /* Header */
+  table.header { width: 100%; border-collapse: collapse; }
+  table.header td { vertical-align: top; padding: 0; }
   .logo-box img {
-    height: 50px;
-    max-width: 150px;
+    height: 34px;
+    max-width: 160px;
     object-fit: contain;
     display: block;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
-  .company-name {
-    font-size: 18px;
-    color: #111;
-    margin: 0 0 6px;
+  .tagline {
+    margin: 0;
+    font-size: 14px;
+    color: #8a8a8a;
+  }
+  .header-right { text-align: right; }
+  .receipt-label {
+    margin: 0 0 4px;
+    font-size: 15px;
+    color: #8a8a8a;
+  }
+  .receipt-total {
+    margin: 0;
+    font-size: 22px;
     font-weight: 700;
-    text-align: left;
-  }
-  .company-details p {
-    margin: 1px 0;
-    font-size: 13px;
-    color: #444;
-  }
-  .invoice-title {
-    font-size: 24px;
-    font-weight: bold;
     color: #111;
-    letter-spacing: 1px;
-    text-align: right;
-    white-space: nowrap;
-    margin: 0 0 14px;
   }
 
-  /* Meta table (date/invoice#/customer id) - plain label: value pairs, no boxes. */
-  table.meta {
-    border-collapse: collapse;
-    margin-left: auto;
+  /* Billed by / Billed to */
+  table.billing { width: 100%; border-collapse: collapse; }
+  table.billing td { vertical-align: top; padding: 0; }
+  table.billing td:first-child { width: 340px; padding-right: 30px; }
+  table.billing td:last-child { width: auto; }
+  .bill-label {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: #8a8a8a;
   }
+  .bill-name { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: #111; }
+  .bill-line { margin: 1px 0; font-size: 13px; color: #333; }
+
+  /* Meta bar */
+  .meta-wrap { padding: 18px 40px; }
+  table.meta { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.meta td {
-    padding: 2px 0;
-    font-size: 13px;
-    text-align: right;
-  }
-  table.meta td.label {
-    font-weight: bold;
-    padding-right: 6px;
-    white-space: nowrap;
-  }
-
-  /* Bill To */
-  .bill-to {
-    margin: 25px 0 20px;
-    max-width: 320px;
-  }
-  .bill-to .bar {
-    font-weight: bold;
-    font-size: 13px;
-    letter-spacing: 0.5px;
-    color: #111;
-  }
-  .bill-to p {
-    margin: 3px 0 0;
-    font-size: 13px;
-  }
-
-  /* Items table */
-  table.items {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 0;
-  }
-  table.items thead th {
-    background: #1e2937;
-    color: #fff;
+    padding: 0;
     text-align: left;
-    padding: 8px 12px;
+  }
+  table.meta td.col-date { width: 160px; padding-right: 40px; }
+  table.meta td.col-invoice { width: 220px; padding-right: 16px; }
+  table.meta .meta-value { white-space: nowrap; }
+  table.meta td.col-customer .meta-value { white-space: normal; }
+  .meta-label { margin: 0 0 4px; font-size: 13px; color: #8a8a8a; }
+  .meta-value { margin: 0; font-size: 13px; font-weight: 700; color: #222; }
+
+  /* Items */
+  table.items { width: 100%; border-collapse: collapse; }
+  table.items thead th {
+    text-align: left;
+    padding: 0 0 8px;
     font-size: 13px;
-    font-weight: bold;
+    color: #8a8a8a;
+    font-weight: normal;
+    border-bottom: 1px solid #eceae5;
   }
-  table.items thead th.num {
-    text-align: right;
-  }
-  table.items thead th.center {
-    text-align: center;
-  }
+  table.items thead th.num { text-align: right; }
   table.items tbody td {
-    padding: 7px 12px;
-    font-size: 13px;
-    background: #fff;
-    border-bottom: 1px solid #ddd;
-  }
-  table.items tbody td.num {
-    text-align: right;
-  }
-  table.items tbody td.center {
-    text-align: center;
-  }
-
-  /* Totals + license row - table-based, same reasoning as the header. */
-  table.lower {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 16px;
-  }
-  table.lower td {
+    padding: 12px 0;
+    font-size: 14px;
+    border-bottom: 1px solid #eceae5;
     vertical-align: top;
-    padding: 0;
   }
-  table.lower td.license-cell {
-    width: 55%;
-    padding-right: 30px;
-  }
-  .license .bar {
-    font-weight: bold;
-    font-size: 13px;
-    color: #111;
-  }
-  .license ul {
-    margin: 8px 0 0 20px;
-    padding: 0;
-    font-size: 13px;
-  }
-  .license li { margin-bottom: 4px; }
+  table.items tbody td.num { text-align: right; font-weight: 700; }
+  .item-title { margin: 0; color: #111; }
+  .item-qty { margin: 3px 0 0; font-size: 12px; color: #8a8a8a; }
 
-  .totals table {
+  /* Totals */
+  table.totals { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  table.totals td { padding: 8px 0; font-size: 14px; }
+  table.totals td.value { text-align: right; }
+  table.totals tr.total td { font-weight: 700; font-size: 15px; color: #2f5fdb; }
+
+  /* License */
+  .license-label { margin: 0 0 12px; font-size: 13px; color: #8a8a8a; }
+  ul.license-list { list-style: none; margin: 0; padding: 0; }
+  ul.license-list li {
+    display: table;
     width: 100%;
-    border-collapse: collapse;
-  }
-  .totals td {
-    padding: 4px 6px;
+    margin-bottom: 8px;
     font-size: 13px;
+    color: #333;
   }
-  .totals td.label {
-    text-align: right;
-    padding-right: 10px;
-  }
-  .totals td.value {
-    text-align: right;
-    width: 110px;
-  }
-  .totals tr.total td {
-    border-top: 2px solid #000;
-    font-weight: bold;
-    font-size: 16px;
-    padding-top: 8px;
-  }
+  ul.license-list li .icon { display: table-cell; width: 22px; vertical-align: middle; }
+  ul.license-list li .text { display: table-cell; vertical-align: middle; }
 
-  .footer {
-    text-align: center;
-    margin-top: 50px;
-    font-size: 13px;
-  }
+  /* Footer */
+  .footer { text-align: center; }
+  .footer p { margin: 0; font-size: 12px; color: #666; }
   .footer .thanks {
-    font-weight: bold;
-    font-style: italic;
-    margin-top: 6px;
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #111;
   }
 </style>
 </head>
 <body>
-  <div class="invoice-wrapper">
+  <div class="card">
 
-    <table class="header">
-      <tr>
-        <td class="company-cell">
-          <div class="logo-box"><img src="{{ logo_url }}" alt="{{ company_name }}"></div>
-          <p class="company-name">{{ company_name }}</p>
-          <div class="company-details">
-            {% for line in company_address_lines %}
-            <p>{{ line }}</p>
-            {% endfor %}
-            <p>Phone: {{ company_phone }}</p>
-          </div>
-        </td>
-        <td>
-          <p class="invoice-title">PAYMENT RECEIPT</p>
-          <table class="meta">
-            <tr>
-              <td class="label">Date:</td>
-              <td>{{ date }}</td>
-            </tr>
-            <tr>
-              <td class="label">Invoice No:</td>
-              <td>{{ invoice_number }}</td>
-            </tr>
-            <tr>
-              <td class="label">Customer ID:</td>
-              <td>{{ customer_id }}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-
-    <div class="bill-to">
-      <div class="bar">BILL TO</div>
-      <p>{{ bill_to_name }}</p>
-      {% if bill_to_company %}<p>{{ bill_to_company }}</p>{% endif %}
-      <p>{{ bill_to_email }}</p>
+    <div class="section">
+      <table class="header">
+        <tr>
+          <td>
+            <div class="logo-box"><img src="{{ logo_url }}" alt="{{ company_name }}"></div>
+            <p class="tagline">{{ company_tagline }}</p>
+          </td>
+          <td class="header-right">
+            <p class="receipt-label">Payment receipt</p>
+            <p class="receipt-total">{{ currency }} {{ "%.2f"|format(total) }}</p>
+          </td>
+        </tr>
+      </table>
     </div>
 
-    <table class="items">
-      <thead>
-        <tr>
-          <th>DESCRIPTION</th>
-          <th class="center">QTY</th>
-          <th class="num">AMOUNT</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in items %}
-        <tr>
-          <td>{{ item.description }}</td>
-          <td class="center">{{ item.qty }}</td>
-          <td class="num">{{ currency }} {{ item.amount }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <hr class="divider">
 
-    <table class="lower">
-      <tr>
-        <td class="license-cell">
-          <div class="license">
-            <div class="bar">LICENSE</div>
-            <ul>
-              <li>Full transcript view access</li>
-              <li>Personal use only - do not redistribute</li>
-              <li>Download transcript</li>
-            </ul>
-          </div>
-        </td>
-        <td class="totals">
-          <table>
-            <tr>
-              <td class="label">Subtotal</td>
-              <td class="value">{{ currency }} {{ subtotal }}</td>
-            </tr>
-            <tr class="total">
-              <td class="label">TOTAL PAID</td>
-              <td class="value">{{ currency }} {{ total }}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
+    <div class="section">
+      <table class="billing">
+        <tr>
+          <td>
+            <p class="bill-label">Billed by</p>
+            <p class="bill-name">{{ company_name }}</p>
+            {% for line in company_address_lines %}
+            <p class="bill-line">{{ line }}</p>
+            {% endfor %}
+            <p class="bill-line">{{ company_phone }}</p>
+          </td>
+          <td>
+            <p class="bill-label">Billed to</p>
+            <p class="bill-name">{{ bill_to_name }}</p>
+            {% if bill_to_company %}<p class="bill-line">{{ bill_to_company }}</p>{% endif %}
+            <p class="bill-line">{{ bill_to_email }}</p>
+          </td>
+        </tr>
+      </table>
+    </div>
 
-    <div class="footer">
+    <hr class="divider">
+
+    <div class="meta-wrap cream">
+      <table class="meta">
+        <tr>
+          <td class="col-date">
+            <p class="meta-label">Date</p>
+            <p class="meta-value">{{ date }}</p>
+          </td>
+          <td class="col-invoice">
+            <p class="meta-label">Invoice no.</p>
+            <p class="meta-value">{{ invoice_number }}</p>
+          </td>
+          <td class="col-customer">
+            <p class="meta-label">Customer ID</p>
+            <p class="meta-value">{{ customer_id }}</p>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <table class="items">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>
+              <p class="item-title">{{ item.description }}</p>
+              <p class="item-qty">Qty {{ item.qty }}</p>
+            </td>
+            <td class="num">{{ currency }} {{ "%.2f"|format(item.amount) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <table class="totals">
+        <tr>
+          <td>Subtotal</td>
+          <td class="value">{{ currency }} {{ "%.2f"|format(subtotal) }}</td>
+        </tr>
+        <tr class="total">
+          <td>Total paid</td>
+          <td class="value">{{ currency }} {{ "%.2f"|format(total) }}</td>
+        </tr>
+      </table>
+    </div>
+
+    <hr class="divider">
+
+    <div class="section cream">
+      <p class="license-label">License</p>
+      <ul class="license-list">
+        <li>
+          <span class="icon">
+            <svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 8.5l4 4 8-9" fill="none" stroke="#2e9e5b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="text">Full transcript view access</span>
+        </li>
+        <li>
+          <span class="icon">
+            <svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 8.5l4 4 8-9" fill="none" stroke="#2e9e5b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="text">Download transcript</span>
+        </li>
+        <li>
+          <span class="icon">
+            <svg width="13" height="13" viewBox="0 0 16 16">
+              <rect x="3" y="7" width="10" height="8" rx="1.5" fill="none" stroke="#8a8a8a" stroke-width="1.4"/>
+              <path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="#8a8a8a" stroke-width="1.4"/>
+            </svg>
+          </span>
+          <span class="text">Personal use only &mdash; do not redistribute</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="section cream footer">
       {% if support_email %}
       <p>Questions about this receipt? Contact {{ support_email }}.</p>
       {% endif %}
-      <p class="thanks">Thank you for your purchase!</p>
+      <p class="thanks">Thank you for your purchase.</p>
     </div>
 
   </div>

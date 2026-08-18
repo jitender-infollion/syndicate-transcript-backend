@@ -1,6 +1,7 @@
 import hashlib
 import math
 import secrets
+import hmac
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
@@ -49,7 +50,7 @@ def verify_otp(session, user: User, otp: str, max_attempts: int) -> None:
         raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
     if user.otp_retry_count >= max_attempts:
         raise HTTPException(status_code=429, detail="Too many incorrect attempts. Please request a new OTP.")
-    if hash_otp(otp) != user.otp_hash:
+    if not hmac.compare_digest(hash_otp(otp), user.otp_hash):
         user.otp_retry_count += 1
         session.commit()
         raise HTTPException(status_code=400, detail="Invalid OTP.")
@@ -60,7 +61,7 @@ def verify_otp(session, user: User, otp: str, max_attempts: int) -> None:
     user.otp_retry_count = 0
 
 
-def to_auth_response(user: User) -> AuthResponse:
+def build_auth_response(user: User) -> AuthResponse:
     token = create_access_token(user_id=user.id, user_name=user.name, email=user.email)
     return AuthResponse(
         token=token,
@@ -68,7 +69,7 @@ def to_auth_response(user: User) -> AuthResponse:
     )
 
 
-def issue_session(session, user: User, device_info: str | None, ip_address: str | None) -> str:
+def create_refresh_session(session, user: User, device_info: str | None, ip_address: str | None) -> str:
     raw_token = secrets.token_urlsafe(32)
     session.add(
         Session(
@@ -82,13 +83,13 @@ def issue_session(session, user: User, device_info: str | None, ip_address: str 
     return raw_token
 
 
-def issue_login(session, user: User, device_info: str | None, ip_address: str | None) -> tuple[AuthResponse, str]:
-    auth_response = to_auth_response(user)
-    refresh_token = issue_session(session, user, device_info, ip_address)
+def authenticate_user(session, user: User, device_info: str | None, ip_address: str | None) -> tuple[AuthResponse, str]:
+    auth_response = build_auth_response(user)
+    refresh_token = create_refresh_session(session, user, device_info, ip_address)
     return auth_response, refresh_token
 
 
-def require_pending_user(session, temp_token: str) -> User:
+def get_pending_verification_user(session, temp_token: str) -> User:
     user_id = decode_pending_verification_token(temp_token)
     if user_id is None:
         raise HTTPException(status_code=401, detail=INVALID_SESSION_DETAIL)

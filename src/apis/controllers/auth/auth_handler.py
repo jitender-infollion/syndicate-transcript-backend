@@ -20,7 +20,7 @@ from services.crypto.email_crypto import hash_email
 from services.database.postgres.connection import get_session
 from services.email.email_service import send_login_otp, send_password_reset_link, send_registration_otp
 
-from .auth_helper import issue_login, issue_otp, require_pending_user, verify_otp
+from .auth_helper import authenticate_user, get_pending_verification_user, issue_otp, verify_otp
 from .auth_schema import AuthResponse, PendingAuthResponse, RegisterRequest
 
 logger = logging.getLogger(__name__)
@@ -109,15 +109,15 @@ def handle_verify_registration_otp(
 ) -> tuple[AuthResponse, str]:
     session = get_session()
     try:
-        user = require_pending_user(session, temp_token)
+        user = get_pending_verification_user(session, temp_token)
         if user.email_verified:
-            result = issue_login(session, user, device_info, ip_address)
+            result = authenticate_user(session, user, device_info, ip_address)
             session.commit()
             return result
 
         verify_otp(session, user, otp, RATE_LIMIT_EMAIL_VERIFICATION_MAX_ATTEMPTS)
         user.email_verified = True
-        result = issue_login(session, user, device_info, ip_address)
+        result = authenticate_user(session, user, device_info, ip_address)
         session.commit()
         return result
     except HTTPException:
@@ -133,7 +133,7 @@ def handle_verify_registration_otp(
 def handle_resend_otp(temp_token: str) -> PendingAuthResponse:
     session = get_session()
     try:
-        user = require_pending_user(session, temp_token)
+        user = get_pending_verification_user(session, temp_token)
         if user.email_verified:
             raise HTTPException(status_code=409, detail="This account is already verified.")
 
@@ -192,7 +192,7 @@ def handle_login(
                     "data": {"tempToken": temp_token},
                 },
             )
-        result = issue_login(session, user, device_info, ip_address)
+        result = authenticate_user(session, user, device_info, ip_address)
         session.commit()
         return result
     except HTTPException:
@@ -247,7 +247,7 @@ def handle_verify_login_otp(
             raise HTTPException(status_code=401, detail=INVALID_OTP_LOGIN_SESSION_DETAIL)
 
         verify_otp(session, user, otp, RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS)
-        result = issue_login(session, user, device_info, ip_address)
+        result = authenticate_user(session, user, device_info, ip_address)
         session.commit()
         return result
     except HTTPException:
@@ -335,7 +335,7 @@ def handle_refresh(raw_token: str, device_info: str | None, ip_address: str | No
             raise HTTPException(status_code=401, detail=INVALID_REFRESH_DETAIL)
 
         existing.revoked_at = datetime.utcnow()
-        result = issue_login(session, user, device_info, ip_address)
+        result = authenticate_user(session, user, device_info, ip_address)
         session.commit()
         return result
     except HTTPException:
