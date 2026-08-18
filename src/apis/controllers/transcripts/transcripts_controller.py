@@ -7,8 +7,10 @@ from .transcripts_handler import DownloadResult
 from .transcripts_schema import (
     TranscriptAccessResponse,
     TranscriptDetailResponse,
+    TranscriptFilterBoundsResponse,
     TranscriptFilterRequest,
     TranscriptFullTextResponse,
+    TranscriptListItem,
 )
 
 
@@ -28,8 +30,16 @@ def list_domains() -> list[str]:
     return handler.handle_list_domains()
 
 
+def get_filter_bounds() -> TranscriptFilterBoundsResponse:
+    return handler.handle_get_filter_bounds()
+
+
 def get_transcript_detail(transcript_id: uuid.UUID) -> TranscriptDetailResponse:
     return handler.handle_get_transcript_detail(transcript_id)
+
+
+def get_similar_transcripts(transcript_id: uuid.UUID, limit: int) -> list[TranscriptListItem]:
+    return handler.handle_get_similar_transcripts(transcript_id, limit)
 
 
 def get_transcript_access(user_id: uuid.UUID, transcript_id: uuid.UUID, mode: str) -> TranscriptAccessResponse:

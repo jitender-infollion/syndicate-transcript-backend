@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Integer, String, Text, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Index, Integer, SmallInteger, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 from services.database.postgres.connection import Base
@@ -31,3 +31,18 @@ class Transcript(Base):
     currency = Column(String, nullable=False, default="INR", server_default=text("'INR'"))
     is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     updated_at = Column(DateTime, nullable=True)
+
+
+# Single-row cache of price/published_at bounds across active transcripts, kept in
+# sync by a DB trigger (see the migration) so the frontend can size its filter
+# sliders/date-range without scanning the whole transcripts table on every request.
+class TranscriptFilterBounds(Base):
+    __tablename__ = "transcript_filter_bounds"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_transcript_filter_bounds_singleton"),)
+
+    id = Column(SmallInteger, primary_key=True, default=1)
+    min_price = Column(BigInteger, nullable=True)
+    max_price = Column(BigInteger, nullable=True)
+    min_published_at = Column(DateTime, nullable=True)
+    max_published_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=False, server_default=text("now()"))

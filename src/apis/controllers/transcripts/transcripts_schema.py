@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from utils.pagination import MAX_PAGE_SIZE
 
 
-class AuthorSummary(BaseModel):
+class ExpertSummary(BaseModel):
     # id is fk_expert - an id from the separate external expert-management system,
     # not a local UUID primary key. Intentionally left as int (see Transcript.fk_expert).
     id: int
@@ -23,7 +23,7 @@ class TranscriptListItem(BaseModel):
     preview: str | None
     keyInsights: list[str]
     price: int
-    author: AuthorSummary | None
+    expert: ExpertSummary | None
     isActive: bool
     publishedAt: datetime | None
 
@@ -40,12 +40,26 @@ class TranscriptFullTextResponse(BaseModel):
     fullText: str
 
 
+class TranscriptFilterBoundsResponse(BaseModel):
+    minPrice: int | None
+    maxPrice: int | None
+    minPublishedAt: datetime | None
+    maxPublishedAt: datetime | None
+
+
 class TranscriptFilterRequest(BaseModel):
-    domains: list[str] | None = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    # Some callers send the singular "domain" - accepted as an alias so it
+    # doesn't silently get dropped (Pydantic ignores unknown keys by default,
+    # which previously made this filter a no-op for those callers).
+    domains: list[str] | None = Field(
+        default=None, validation_alias=AliasChoices("domains", "domain")
+    )
     geographies: list[str] | None = None
     topic: str | None = None
     search: str | None = None  # free-text across topic/preview/domains/geographies
-    authorId: int | None = None  # fk_expert (external expert-management id) - intentionally not a UUID
+    expertId: int | None = None  # fk_expert (external expert-management id) - intentionally not a UUID
     minPrice: int | None = None
     maxPrice: int | None = None
     publishedAfter: datetime | None = None

@@ -46,9 +46,21 @@ def list_domains():
     return success_response(data=result)
 
 
+@router.get(P.transcripts.FILTER_BOUNDS, dependencies=[Depends(rate_limit_transcripts_public)])
+def get_filter_bounds():
+    result = transcripts_controller.get_filter_bounds()
+    return success_response(data=result)
+
+
 @router.get(P.transcripts.DETAIL, dependencies=[Depends(rate_limit_transcripts_public)])
 def get_transcript_detail(transcript_id: uuid.UUID):
     result = transcripts_controller.get_transcript_detail(transcript_id)
+    return success_response(data=result)
+
+
+@router.get(P.transcripts.SIMILAR, dependencies=[Depends(rate_limit_transcripts_public)])
+def get_similar_transcripts(transcript_id: uuid.UUID, limit: int = 3):
+    result = transcripts_controller.get_similar_transcripts(transcript_id, limit)
     return success_response(data=result)
 
 

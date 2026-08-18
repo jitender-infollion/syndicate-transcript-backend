@@ -1,3 +1,3 @@
-from .model import Transcript
+from .model import Transcript, TranscriptFilterBounds
 
-__all__ = ["Transcript"]
+__all__ = ["Transcript", "TranscriptFilterBounds"]

@@ -3,9 +3,9 @@ import uuid
 from apis.models.order import Order, OrderItem, OrderStatus
 from apis.models.transcript import Transcript
 
-from .transcripts_schema import AuthorSummary, TranscriptListItem
+from .transcripts_schema import ExpertSummary, TranscriptListItem
 
-# Shared with cart/orders - same slim transcript+author shape used there too.
+# Shared with cart/orders - same slim transcript+expert shape used there too.
 SLIM_TRANSCRIPT_COLUMNS = (
     Transcript.id,
     Transcript.topic,
@@ -56,7 +56,7 @@ def row_to_transcript_list_item(row) -> TranscriptListItem:
         designation,
         years_of_experience,
     ) = row
-    author = AuthorSummary(
+    expert = ExpertSummary(
         id=fk_expert, name=expert_name, designation=designation, yearsOfExperience=years_of_experience
     )
     return TranscriptListItem(
@@ -67,7 +67,7 @@ def row_to_transcript_list_item(row) -> TranscriptListItem:
         preview=preview,
         keyInsights=key_insights or [],
         price=int(price),
-        author=author,
+        expert=expert,
         isActive=is_active,
         publishedAt=published_at,
     )
