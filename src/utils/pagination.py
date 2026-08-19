@@ -7,10 +7,14 @@ from sqlalchemy.orm import Query as SAQuery
 T = TypeVar("T")
 
 
+MAX_PAGE_SIZE = 20
+
+
 class PaginationParams:
-    def __init__(self, page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=100)):
+    def __init__(self, page: int = Query(1, ge=1), limit: int = Query(20, ge=1)):
         self.page = page
-        self.limit = limit
+        # Capped rather than rejected - a client asking for 5000 just gets MAX_PAGE_SIZE back.
+        self.limit = min(limit, MAX_PAGE_SIZE)
 
     @property
     def offset(self) -> int:

@@ -1,4 +1,7 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+import uuid
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import UUID
 
 from services.database.postgres.connection import Base
 
@@ -14,8 +17,8 @@ class Order(Base):
         UniqueConstraint("user_id", "idempotency_key", name="uq_orders_user_idempotency_key"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     status = Column(String, nullable=False, default=OrderStatus.CREATED.value, server_default=OrderStatus.CREATED.value)
     amount = Column(Integer, nullable=False)
     currency = Column(String, nullable=False)
@@ -33,10 +36,10 @@ class OrderItem(Base):
         Index("ix_order_items_user_id_transcript_id", "user_id", "transcript_id"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
-    order_id = Column(BigInteger, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
-    transcript_id = Column(BigInteger, ForeignKey("transcripts.id"), nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    transcript_id = Column(UUID(as_uuid=True), ForeignKey("transcripts.id"), nullable=False, index=True)
     price = Column(Integer, nullable=False)
     currency = Column(String, nullable=False)
     access_permission = Column(

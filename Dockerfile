@@ -31,8 +31,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system --require-hashes -r requirements.lock.txt
 
 COPY --chown=1001:1001 src ./src
+COPY --chown=1001:1001 entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 USER 1001
 WORKDIR /app/src
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/entrypoint.sh"]

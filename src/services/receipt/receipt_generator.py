@@ -10,6 +10,7 @@ _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _jinja_env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=select_autoescape(["html"]))
 
 _COMPANY_NAME = "Infollion Research Services"
+_COMPANY_TAGLINE = "On-demand experts"
 _COMPANY_ADDRESS_LINES = ["5th Floor, UNITECH CYBER PARK, Durga Colony, Sector 39", "Gurugram, Haryana 122003"]
 _COMPANY_PHONE = "0124 440 6555"
 # Same logo already used in the invoice email template, for consistent branding.
@@ -32,6 +33,7 @@ def generate_receipt_pdf(order, item_rows, user, invoice_number: str) -> bytes:
     template = _jinja_env.get_template("receipt.html")
     html = template.render(
         company_name=_COMPANY_NAME,
+        company_tagline=_COMPANY_TAGLINE,
         company_address_lines=_COMPANY_ADDRESS_LINES,
         company_phone=_COMPANY_PHONE,
         logo_url=_LOGO_URL,

@@ -43,16 +43,12 @@ class ServicesConfig:
 
 @dataclass
 class EmailConfig:
-    smtp_host: str
-    smtp_port: int
-    smtp_username: str
-    smtp_password: str
+    sendgrid_api_key: str
     from_email: str
-    use_tls: bool
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.smtp_host and self.smtp_username and self.smtp_password and self.from_email)
+        return bool(self.sendgrid_api_key and self.from_email)
 
 
 @dataclass
@@ -121,12 +117,8 @@ class Settings:
                 enable_docs=get_bool_env("ENABLE_DOCS", default=False),
             ),
             email=EmailConfig(
-                smtp_host=get_env("SMTP_HOST", default="", required=False),
-                smtp_port=int(get_env("SMTP_PORT", default="587", required=False)),
-                smtp_username=get_env("SMTP_USER", default="", required=False),
-                smtp_password=get_env("SMTP_PASS", default="", required=False),
-                from_email=get_env("SMTP_FROM", default="", required=False),
-                use_tls=get_bool_env("SMTP_USE_TLS", default=True),
+                sendgrid_api_key=get_env("SENDGRID_API_KEY", default="", required=False),
+                from_email=get_env("FROM_EMAIL", default="", required=False),
             ),
             secrets=SecretsConfig(
                 email_encryption_key=get_env("EMAIL_ENCRYPTION_KEY"),

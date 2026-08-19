@@ -1,4 +1,7 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, String, text
+import uuid
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, text
+from sqlalchemy.dialects.postgresql import UUID
 
 from services.database.postgres.connection import Base
 
@@ -7,8 +10,8 @@ from services.database.postgres.connection import Base
 class Receipt(Base):
     __tablename__ = "receipts"
 
-    id = Column(BigInteger, primary_key=True, index=True)
-    order_id = Column(BigInteger, ForeignKey("orders.id"), nullable=False, unique=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False, unique=True, index=True)
 
     invoice_number = Column(String, nullable=False, unique=True, index=True)
 

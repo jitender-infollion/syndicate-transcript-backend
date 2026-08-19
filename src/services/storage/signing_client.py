@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 import httpx
 from fastapi import HTTPException
@@ -8,7 +9,7 @@ from config import get_settings
 logger = logging.getLogger(__name__)
 
 
-def get_signed_url(transcript_id: int, final_transcript: dict) -> str:
+def get_signed_url(transcript_id: uuid.UUID, final_transcript: dict) -> str:
     # Endpoint path and auth header format are placeholders, pending the real contract.
     settings = get_settings().signing_service
     if not settings.is_configured:
@@ -17,7 +18,7 @@ def get_signed_url(transcript_id: int, final_transcript: dict) -> str:
     try:
         response = httpx.post(
             settings.base_url,
-            json={"transcript_id": transcript_id, "final_transcript": final_transcript},
+            json={"transcript_id": str(transcript_id), "final_transcript": final_transcript},
             headers={"Authorization": f"Bearer {settings.api_key}"},
             timeout=10,
         )

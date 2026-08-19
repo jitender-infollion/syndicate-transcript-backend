@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, Header, Request
 
 from apis.controllers.orders.orders_controller import OrdersController
@@ -15,7 +17,7 @@ router = APIRouter(prefix=P.orders.BASE, tags=["Orders"])
 def create_order(
     body: CreateOrderRequest,
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-    user_id: int = Depends(get_current_user_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
     controller: OrdersController = Depends(get_orders_controller),
 ):
     result = controller.create_order(user_id, body, idempotency_key)
@@ -25,7 +27,7 @@ def create_order(
 @router.post(P.orders.VERIFY)
 def verify_payment(
     body: VerifyPaymentRequest,
-    user_id: int = Depends(get_current_user_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
     controller: OrdersController = Depends(get_orders_controller),
 ):
     result = controller.verify_payment(user_id, body)
@@ -34,7 +36,7 @@ def verify_payment(
 
 @router.get(P.orders.ROOT)
 def list_orders(
-    user_id: int = Depends(get_current_user_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
     controller: OrdersController = Depends(get_orders_controller),
 ):
     result = controller.list_orders(user_id)
@@ -43,8 +45,8 @@ def list_orders(
 
 @router.get(P.orders.DETAIL)
 def get_order(
-    order_id: int,
-    user_id: int = Depends(get_current_user_id),
+    order_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
     controller: OrdersController = Depends(get_orders_controller),
 ):
     result = controller.get_order(user_id, order_id)
@@ -53,8 +55,8 @@ def get_order(
 
 @router.get(P.orders.RECEIPT)
 def get_receipt(
-    order_id: int,
-    user_id: int = Depends(get_current_user_id),
+    order_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
     controller: OrdersController = Depends(get_orders_controller),
 ):
     pdf_bytes = controller.get_receipt_pdf(user_id, order_id)

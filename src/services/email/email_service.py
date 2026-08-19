@@ -1,8 +1,8 @@
+import base64
 import logging
-import smtplib
-from email.message import EmailMessage
 from pathlib import Path
 
+import httpx
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from config import get_settings
@@ -14,15 +14,17 @@ _jinja_env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=sel
 
 OTP_TTL_MINUTES = 10
 
-# Publicly-reachable URL, not derived from frontend_base_url (unreachable from an email client in dev).
-_LOGO_URL = "https://www.infollion.com/imported/logo-new.png"
+# Embedded inline (CID) rather than linked by URL - remote images get blocked
+# by default in most email clients (Gmail, Outlook), while inline images
+# don't since there's no external request for the client to block.
+_LOGO_CID = "logo"
+_LOGO_BYTES = (Path(__file__).parent / "assets" / "infollion_logo.png").read_bytes()
 
 
 def _render_otp_email(title: str, heading: str, description: str, otp: str) -> str:
     return _jinja_env.get_template("otp_code.html").render(
         title=title,
         render_logo=True,
-        logo_url=_LOGO_URL,
         heading=heading,
         description=description,
         code=otp,
@@ -35,34 +37,59 @@ def _send_email(
     subject: str,
     body: str,
     html: str | None = None,
+    include_logo: bool = False,
     attachment_bytes: bytes | None = None,
     attachment_filename: str | None = None,
 ) -> None:
     email_config = get_settings().email
     if not email_config.is_configured:
-        logger.warning("SMTP is not configured; logging email instead of sending. To: %s | %s", to_email, body)
+        logger.warning("SendGrid is not configured; logging email instead of sending. To: %s | %s", to_email, body)
         return
 
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = email_config.from_email
-    message["To"] = to_email
-    message.set_content(body)
+    content = [{"type": "text/plain", "value": body}]
     if html:
-        message.add_alternative(html, subtype="html")
+        content.append({"type": "text/html", "value": html})
+
+    payload = {
+        "personalizations": [{"to": [{"email": to_email}]}],
+        "from": {"email": email_config.from_email},
+        "subject": subject,
+        "content": content,
+    }
+
+    attachments = []
+    if include_logo:
+        attachments.append(
+            {
+                "content": base64.b64encode(_LOGO_BYTES).decode(),
+                "filename": "logo.png",
+                "type": "image/png",
+                "disposition": "inline",
+                "content_id": _LOGO_CID,
+            }
+        )
     if attachment_bytes and attachment_filename:
-        message.add_attachment(attachment_bytes, maintype="application", subtype="pdf", filename=attachment_filename)
+        attachments.append(
+            {
+                "content": base64.b64encode(attachment_bytes).decode(),
+                "filename": attachment_filename,
+                "type": "application/pdf",
+                "disposition": "attachment",
+            }
+        )
+    if attachments:
+        payload["attachments"] = attachments
 
     try:
-        if email_config.use_tls:
-            with smtplib.SMTP(email_config.smtp_host, email_config.smtp_port, timeout=10) as server:
-                server.starttls()
-                server.login(email_config.smtp_username, email_config.smtp_password)
-                server.send_message(message)
-        else:
-            with smtplib.SMTP_SSL(email_config.smtp_host, email_config.smtp_port, timeout=10) as server:
-                server.login(email_config.smtp_username, email_config.smtp_password)
-                server.send_message(message)
+        # SendGrid sends over HTTPS (443), not SMTP - some hosts (e.g. Render)
+        # block outbound SMTP entirely, which is why this uses their HTTP API.
+        response = httpx.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {email_config.sendgrid_api_key}"},
+            json=payload,
+            timeout=10,
+        )
+        response.raise_for_status()
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
         raise
@@ -80,6 +107,7 @@ def send_registration_otp(email: str, otp: str) -> None:
         subject="Your verification code",
         body=f"Your OTP is {otp}. It expires in {OTP_TTL_MINUTES} minutes.",
         html=html,
+        include_logo=True,
     )
 
 
@@ -95,6 +123,7 @@ def send_login_otp(email: str, otp: str) -> None:
         subject="Your login code",
         body=f"Your login OTP is {otp}. It expires in {OTP_TTL_MINUTES} minutes.",
         html=html,
+        include_logo=True,
     )
 
 
@@ -109,7 +138,6 @@ def send_password_reset_link(email: str, reset_link: str) -> None:
 def send_invoice_email(email: str, name: str | None, invoice_number: str, pdf_bytes: bytes) -> None:
     html = _jinja_env.get_template("invoice_email.html").render(
         title="Your Infollion receipt",
-        logo_url=_LOGO_URL,
         name=name,
         invoice_number=invoice_number,
     )
@@ -118,6 +146,7 @@ def send_invoice_email(email: str, name: str | None, invoice_number: str, pdf_by
         subject=f"Your Infollion receipt - {invoice_number}",
         body=f"Thanks for your purchase! Your receipt ({invoice_number}) is attached.",
         html=html,
+        include_logo=True,
         attachment_bytes=pdf_bytes,
         attachment_filename=f"{invoice_number}.pdf",
     )

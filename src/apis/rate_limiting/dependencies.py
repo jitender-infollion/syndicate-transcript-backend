@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import Depends, Request
 
 from apis.controllers.auth.auth_schema import LoginOtpSendRequest, RegisterRequest, ResendOtpRequest
@@ -109,5 +111,5 @@ def rate_limit_transcripts_public(request: Request) -> None:
         RateLimits.transcripts.PUBLIC_IP.check(f"transcripts_public:{ip_address}")
 
 
-def rate_limit_create_order(user_id: int = Depends(get_current_user_id)) -> None:
+def rate_limit_create_order(user_id: uuid.UUID = Depends(get_current_user_id)) -> None:
     RateLimits.orders.CREATE_ORDER.check(f"create_order:{user_id}")

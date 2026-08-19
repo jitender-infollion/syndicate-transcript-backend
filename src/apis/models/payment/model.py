@@ -1,4 +1,7 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+import uuid
+
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import UUID
 
 from services.database.postgres.connection import Base
 
@@ -14,8 +17,8 @@ class Payment(Base):
         Index("ix_payments_order_id", "order_id"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
-    order_id = Column(BigInteger, ForeignKey("orders.id"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False)
     provider = Column(String, nullable=False)
     provider_order_id = Column(String, nullable=False)
     provider_payment_id = Column(String, nullable=True)

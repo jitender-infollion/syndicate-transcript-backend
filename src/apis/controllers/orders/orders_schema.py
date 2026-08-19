@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Literal
 
@@ -10,13 +11,13 @@ class CreateOrderRequest(BaseModel):
     # amount/currency are unused - the server recomputes the real total.
     amount: int
     currency: str
-    transcriptIds: list[int]
+    transcriptIds: list[uuid.UUID]
 
 
 class CreateOrderResponse(BaseModel):
     orderId: str
     razorpayOrderId: str
-    transcriptIds: list[int]
+    transcriptIds: list[uuid.UUID]
     amount: int
     currency: str
     keyId: str
@@ -28,7 +29,7 @@ class FreeOrderResponse(BaseModel):
     # the frontend. Status will always be "paid" here.
     orderId: str
     status: OrderStatusLiteral
-    transcriptIds: list[int]
+    transcriptIds: list[uuid.UUID]
     amount: int
 
 
@@ -45,7 +46,7 @@ class VerifyPaymentResponse(BaseModel):
 
 class OrderSummary(BaseModel):
     id: str
-    transcripts: list[int]
+    transcripts: list[uuid.UUID]
     amount: int
     status: OrderStatusLiteral
     createdAt: datetime | None

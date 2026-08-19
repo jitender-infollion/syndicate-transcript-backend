@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import datetime
 
 from fastapi import HTTPException
@@ -15,7 +16,7 @@ from services.email.email_service import send_invoice_email
 from services.payment import RazorpayService
 from services.receipt import generate_receipt_pdf
 
-from .orders_helper import create_receipt, transition_to_failed, transition_to_paid
+from .orders_helper import clear_purchased_cart_items, create_receipt, transition_to_failed, transition_to_paid
 from .orders_schema import CreateOrderResponse, FreeOrderResponse, OrderSummary, VerifyPaymentResponse
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ class OrdersHandler:
         )
 
     def create_order(
-        self, user_id: int, transcript_ids: list[int], idempotency_key: str
+        self, user_id: uuid.UUID, transcript_ids: list[uuid.UUID], idempotency_key: str
     ) -> CreateOrderResponse | FreeOrderResponse:
         # Rate limiting (RateLimits.orders.CREATE_ORDER) happens in
         # rate_limit_create_order, wired onto this route as a dependency.
@@ -136,6 +137,7 @@ class OrdersHandler:
                 session.flush()
 
                 create_receipt(session, order, paid_at)
+                clear_purchased_cart_items(session, order)
 
                 try:
                     session.commit()
@@ -154,9 +156,10 @@ class OrdersHandler:
                     orderId=str(order.id), status=order.status, transcriptIds=unique_ids, amount=0
                 )
 
-            receipt = f"order-{user_id}-{int(datetime.utcnow().timestamp())}"
+            # Razorpay's receipt field caps at 40 chars; a full UUID user_id would
+            # overflow it, so use a short prefix rather than the id in full.
+            receipt = f"order-{str(user_id)[:8]}-{int(datetime.utcnow().timestamp())}"
 
-            # amount is whole units here, matching transcripts.price - not Razorpay's usual paise.
             gateway_order = self.payment_service.create_order(amount, currency, receipt)
             if gateway_order is None:
                 raise HTTPException(status_code=502, detail="Could not start payment. Please try again.")
@@ -244,7 +247,7 @@ class OrdersHandler:
             logger.exception("Failed to email invoice for order %s", order.id)
 
     def verify_payment(
-        self, user_id: int, razorpay_order_id: str, razorpay_payment_id: str, razorpay_signature: str
+        self, user_id: uuid.UUID, razorpay_order_id: str, razorpay_payment_id: str, razorpay_signature: str
     ) -> VerifyPaymentResponse:
         session = get_session()
         try:
@@ -341,12 +344,12 @@ class OrdersHandler:
         finally:
             session.close()
 
-    def list_orders(self, user_id: int) -> list[OrderSummary]:
+    def list_orders(self, user_id: uuid.UUID) -> list[OrderSummary]:
         session = get_session()
         try:
             orders = session.query(Order).filter(Order.user_id == user_id).order_by(Order.created_at.desc()).all()
             order_ids = [o.id for o in orders]
-            items_by_order: dict[int, list[int]] = {}
+            items_by_order: dict[uuid.UUID, list[uuid.UUID]] = {}
             if order_ids:
                 rows = (
                     session.query(OrderItem.order_id, OrderItem.transcript_id)
@@ -375,7 +378,7 @@ class OrdersHandler:
         finally:
             session.close()
 
-    def get_order(self, user_id: int, order_id: int) -> OrderSummary:
+    def get_order(self, user_id: uuid.UUID, order_id: uuid.UUID) -> OrderSummary:
         session = get_session()
         try:
             order = session.query(Order).filter(Order.id == order_id, Order.user_id == user_id).first()
@@ -400,7 +403,7 @@ class OrdersHandler:
         finally:
             session.close()
 
-    def get_receipt_pdf(self, user_id: int, order_id: int) -> bytes:
+    def get_receipt_pdf(self, user_id: uuid.UUID, order_id: uuid.UUID) -> bytes:
         session = get_session()
         try:
             order = session.query(Order).filter(Order.id == order_id, Order.user_id == user_id).first()
@@ -412,8 +415,10 @@ class OrdersHandler:
                 invoice_number = receipt.invoice_number
             else:
                 # Paid before the receipts table existed - compute without persisting.
+                # order.id is now a UUID, not a zero-padded int - use a short hex
+                # segment instead of the old `:05d` numeric formatting.
                 paid_at = order.paid_at or order.created_at
-                invoice_number = f"INV-{paid_at:%Y%m%d}-{order.id:05d}"
+                invoice_number = f"INV-{paid_at:%Y%m%d}-{order.id.hex[:8].upper()}"
 
             rows, user = self._load_receipt_data(session, order)
             return generate_receipt_pdf(order, rows, user, invoice_number)

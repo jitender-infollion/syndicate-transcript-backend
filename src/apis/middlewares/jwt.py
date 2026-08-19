@@ -19,6 +19,10 @@ from utils.response import error_response
 # Dynamic id - scoped to one segment so /me/purchased, /{id}/view|download stay protected.
 PUBLIC_PATH_RE = re.compile(r"^/api/transcripts/[^/]+$")
 
+# Also public, like the detail page itself - unlike /view|download|full-text,
+# there's no entitlement being checked here, just a read-only recommendation list.
+PUBLIC_TRANSCRIPT_SUBPATH_RE = re.compile(r"^/api/transcripts/[^/]+/similar$")
+
 WEBHOOK_PATH_RE = re.compile(r"^/api/orders/webhook/[^/]+$")  # verified via gateway signature instead
 
 # Bearer token decoded if present, but not required. /api/cart/merge excluded.
@@ -59,7 +63,12 @@ async def jwt_middleware(request: Request, call_next):
     # Fully public, unauthenticated - webhooks excluded (server-to-server,
     # protected by gateway signature instead; IP-limiting them risks dropping
     # legitimate redelivery bursts from the gateway's own IP pool).
-    if path in UNPROTECTED_PATHS or PUBLIC_PATH_RE.match(path) or WEBHOOK_PATH_RE.match(path):
+    if (
+        path in UNPROTECTED_PATHS
+        or PUBLIC_PATH_RE.match(path)
+        or PUBLIC_TRANSCRIPT_SUBPATH_RE.match(path)
+        or WEBHOOK_PATH_RE.match(path)
+    ):
         if not WEBHOOK_PATH_RE.match(path):
             ip_address = get_ip_address(request)
             if ip_address:

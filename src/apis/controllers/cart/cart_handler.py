@@ -1,11 +1,12 @@
 import logging
+import uuid
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
 from apis.controllers.transcripts.transcripts_helper import SLIM_TRANSCRIPT_COLUMNS, row_to_transcript_list_item
-from apis.models.cart import Cart, CartItem, CartStatus
+from apis.models.cart import Cart, CartItem
 from apis.models.transcript import Transcript
 from services.database.postgres.connection import get_session
 
@@ -14,8 +15,8 @@ from .cart_schema import CartResponse
 logger = logging.getLogger(__name__)
 
 
-def _get_cart(session, user_id: int | None, guest_id: str | None, *, create: bool) -> Cart | None:
-    query = session.query(Cart).filter(Cart.status == CartStatus.ACTIVE.value)
+def _get_cart(session, user_id: uuid.UUID | None, guest_id: str | None, *, create: bool) -> Cart | None:
+    query = session.query(Cart)
     if user_id is not None:
         cart = query.filter(Cart.user_id == user_id).first()
     elif guest_id:
@@ -27,7 +28,6 @@ def _get_cart(session, user_id: int | None, guest_id: str | None, *, create: boo
         cart = Cart(
             user_id=user_id,
             guest_id=guest_id if user_id is None else None,
-            status=CartStatus.ACTIVE.value,
             expires_at=datetime.utcnow() + timedelta(days=180) if user_id is None else None,
         )
         session.add(cart)
@@ -48,7 +48,7 @@ def _cart_response(session, cart: Cart | None) -> CartResponse:
     return CartResponse(items=[row_to_transcript_list_item(row) for row in rows])
 
 
-def handle_get_cart(user_id: int | None, guest_id: str | None) -> CartResponse:
+def handle_get_cart(user_id: uuid.UUID | None, guest_id: str | None) -> CartResponse:
     session = get_session()
     try:
         cart = _get_cart(session, user_id, guest_id, create=False)
@@ -63,7 +63,7 @@ def handle_get_cart(user_id: int | None, guest_id: str | None) -> CartResponse:
         session.close()
 
 
-def handle_add_item(user_id: int | None, guest_id: str | None, transcript_id: int) -> CartResponse:
+def handle_add_item(user_id: uuid.UUID | None, guest_id: str | None, transcript_id: uuid.UUID) -> CartResponse:
     if user_id is None and not guest_id:
         raise HTTPException(status_code=400, detail="A guest cart identity is required.")
 
@@ -95,7 +95,7 @@ def handle_add_item(user_id: int | None, guest_id: str | None, transcript_id: in
         session.close()
 
 
-def handle_remove_item(user_id: int | None, guest_id: str | None, transcript_id: int) -> CartResponse:
+def handle_remove_item(user_id: uuid.UUID | None, guest_id: str | None, transcript_id: uuid.UUID) -> CartResponse:
     session = get_session()
     try:
         cart = _get_cart(session, user_id, guest_id, create=False)
@@ -115,7 +115,7 @@ def handle_remove_item(user_id: int | None, guest_id: str | None, transcript_id:
         session.close()
 
 
-def handle_clear_cart(user_id: int | None, guest_id: str | None) -> CartResponse:
+def handle_clear_cart(user_id: uuid.UUID | None, guest_id: str | None) -> CartResponse:
     session = get_session()
     try:
         cart = _get_cart(session, user_id, guest_id, create=False)
@@ -133,7 +133,7 @@ def handle_clear_cart(user_id: int | None, guest_id: str | None) -> CartResponse
         session.close()
 
 
-def handle_merge_cart(user_id: int, guest_id: str | None, item_ids: list[int]) -> CartResponse:
+def handle_merge_cart(user_id: uuid.UUID, guest_id: str | None, item_ids: list[uuid.UUID]) -> CartResponse:
     session = get_session()
     try:
         user_cart = _get_cart(session, user_id, None, create=False)

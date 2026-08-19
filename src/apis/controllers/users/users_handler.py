@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from fastapi import HTTPException
 
@@ -10,7 +11,7 @@ from .users_schema import ProfileResponse
 logger = logging.getLogger(__name__)
 
 
-def handle_get_profile(user_id: int) -> ProfileResponse:
+def handle_get_profile(user_id: uuid.UUID) -> ProfileResponse:
     session = get_session()
     try:
         user = session.query(User).filter(User.id == user_id).first()
