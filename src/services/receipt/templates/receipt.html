@@ -18,7 +18,7 @@
     margin: 0 auto;
   }
   .section {
-    padding: 26px 40px;
+    padding: 16px 40px;
   }
   hr.divider {
     border: none;
@@ -50,7 +50,7 @@
   }
   .receipt-total {
     margin: 0;
-    font-size: 22px;
+    font-size: 14px;
     font-weight: 700;
     color: #111;
   }
@@ -58,10 +58,10 @@
   /* Billed by / Billed to */
   table.billing { width: 100%; border-collapse: collapse; }
   table.billing td { vertical-align: top; padding: 0; }
-  table.billing td:first-child { width: 340px; padding-right: 30px; }
+  table.billing td:first-child { width: 400px; padding-right: 90px; }
   table.billing td:last-child { width: auto; }
   .bill-label {
-    margin: 0 0 6px;
+    margin: 0 0 4px;
     font-size: 13px;
     color: #8a8a8a;
   }
@@ -69,45 +69,54 @@
   .bill-line { margin: 1px 0; font-size: 13px; color: #333; }
 
   /* Meta bar */
-  .meta-wrap { padding: 18px 40px; }
+  .meta-wrap { padding: 10px 40px; }
   table.meta { width: 100%; border-collapse: collapse; table-layout: fixed; }
   table.meta td {
     padding: 0;
     text-align: left;
   }
-  table.meta td.col-date { width: 160px; padding-right: 40px; }
-  table.meta td.col-invoice { width: 220px; padding-right: 16px; }
+  table.meta td.col-date { width: 130px; padding-right: 24px; }
+  table.meta td.col-invoice { width: 190px; padding-right: 16px; }
   table.meta .meta-value { white-space: nowrap; }
   table.meta td.col-customer .meta-value { white-space: normal; }
-  .meta-label { margin: 0 0 4px; font-size: 13px; color: #8a8a8a; }
+  .meta-label { margin: 0 0 2px; font-size: 12px; color: #8a8a8a; }
   .meta-value { margin: 0; font-size: 13px; font-weight: 700; color: #222; }
 
   /* Items */
+  .items-box {
+    background: #f7f6f3;
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
   table.items { width: 100%; border-collapse: collapse; }
   table.items thead th {
     text-align: left;
-    padding: 0 0 8px;
-    font-size: 13px;
+    padding: 0 0 10px;
+    font-size: 11px;
     color: #8a8a8a;
     font-weight: normal;
-    border-bottom: 1px solid #eceae5;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #e6e3dc;
   }
-  table.items thead th.num { text-align: right; }
+  table.items thead th.qty { text-align: center; width: 60px; }
+  table.items thead th.num { text-align: right; width: 120px; }
   table.items tbody td {
     padding: 12px 0;
     font-size: 14px;
-    border-bottom: 1px solid #eceae5;
+    border-bottom: 1px solid #e6e3dc;
     vertical-align: top;
   }
+  table.items tbody tr:last-child td { border-bottom: none; }
+  table.items tbody td.qty { text-align: center; color: #333; }
   table.items tbody td.num { text-align: right; font-weight: 700; }
   .item-title { margin: 0; color: #111; }
-  .item-qty { margin: 3px 0 0; font-size: 12px; color: #8a8a8a; }
 
   /* Totals */
   table.totals { width: 100%; border-collapse: collapse; margin-top: 4px; }
   table.totals td { padding: 8px 0; font-size: 14px; }
   table.totals td.value { text-align: right; }
-  table.totals tr.total td { font-weight: 700; font-size: 15px; color: #2f5fdb; }
+  table.totals tr.total td { font-weight: 700; font-size: 15px; color: #ec9324; }
 
   /* License */
   .license-label { margin: 0 0 12px; font-size: 13px; color: #8a8a8a; }
@@ -144,7 +153,7 @@
             <p class="tagline">{{ company_tagline }}</p>
           </td>
           <td class="header-right">
-            <p class="receipt-label">Payment receipt</p>
+            <p class="receipt-label">Payment Receipt</p>
             <p class="receipt-total">{{ currency }} {{ "%.2f"|format(total) }}</p>
           </td>
         </tr>
@@ -196,25 +205,28 @@
     </div>
 
     <div class="section">
-      <table class="items">
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th class="num">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in items %}
-          <tr>
-            <td>
-              <p class="item-title">{{ item.description }}</p>
-              <p class="item-qty">Qty {{ item.qty }}</p>
-            </td>
-            <td class="num">{{ currency }} {{ "%.2f"|format(item.amount) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="items-box">
+        <table class="items">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="qty">Qty</th>
+              <th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+            <tr>
+              <td>
+                <p class="item-title">{{ item.description }}</p>
+              </td>
+              <td class="qty">{{ item.qty }}</td>
+              <td class="num">{{ currency }} {{ "%.2f"|format(item.amount) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
       <table class="totals">
         <tr>

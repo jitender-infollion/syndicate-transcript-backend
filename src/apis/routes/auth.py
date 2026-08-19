@@ -15,7 +15,9 @@ from apis.rate_limiting.dependencies import (
     rate_limit_forgot_password,
     rate_limit_login,
     rate_limit_login_otp_send,
+    rate_limit_login_otp_verify,
     rate_limit_register,
+    rate_limit_register_otp_verify,
     rate_limit_resend_otp,
 )
 from config import get_settings
@@ -40,7 +42,7 @@ def register(data: RegisterRequest):
     return success_response(data=result, message="OTP sent to your email. Please verify to complete registration.")
 
 
-@router.post(P.auth.REGISTER_VERIFY_OTP)
+@router.post(P.auth.REGISTER_VERIFY_OTP, dependencies=[Depends(rate_limit_register_otp_verify)])
 def verify_registration_otp(data: VerifyOtpRequest, request: Request, response: Response):
     auth_response, raw_refresh_token = auth_controller.verify_registration_otp(
         data, get_device_info(request), get_ip_address(request)
@@ -68,7 +70,7 @@ def send_login_otp(data: LoginOtpSendRequest):
     return success_response(data=result, message="OTP sent to your email.")
 
 
-@router.post(P.auth.LOGIN_OTP_VERIFY)
+@router.post(P.auth.LOGIN_OTP_VERIFY, dependencies=[Depends(rate_limit_login_otp_verify)])
 def verify_login_otp(data: LoginOtpVerifyRequest, request: Request, response: Response):
     auth_response, raw_refresh_token = auth_controller.verify_login_otp(
         data, get_device_info(request), get_ip_address(request)

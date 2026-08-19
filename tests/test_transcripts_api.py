@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 
-def _signup_and_verify(client, monkeypatch, email="reader@example.com", password="s3cret123", name="Reader"):
+def _signup_and_verify(client, monkeypatch, email="reader@example.com", password="s3cret1234", name="Reader"):
     captured = {}
 
     def fake_send_otp(to_email, otp):

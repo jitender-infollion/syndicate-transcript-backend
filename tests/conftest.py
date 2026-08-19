@@ -10,6 +10,7 @@ load_dotenv()
 
 _TEST_DB_ENV = "TRANSCRIPT_TEST_DATABASE_URL"
 _TEST_ENV = {
+    "ENVIRONMENT": "development",
     "JWT_SECRET": "test-jwt-secret",
     "ACCESS_TOKEN_EXPIRY_MINUTES": "15",
     "REFRESH_TOKEN_EXPIRY_DAYS": "30",

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from fastapi import HTTPException
-from sqlalchemy import String, case, cast, desc, func, literal, literal_column, or_
+from sqlalchemy import case, desc, func, literal, literal_column, or_
 
 from apis.models.order import Order, OrderItem, OrderStatus
 from apis.models.transcript import Transcript, TranscriptFilterBounds
@@ -14,7 +14,12 @@ from services.storage.signing_client import get_signed_url
 from services.transcript_pdf import generate_transcript_pdf
 from utils.pagination import Page, PaginationParams, build_page, paginate
 
-from .transcripts_helper import SLIM_TRANSCRIPT_COLUMNS, has_transcript_access, row_to_transcript_list_item
+from .transcripts_helper import (
+    SLIM_TRANSCRIPT_COLUMNS,
+    build_transcript_search_vector,
+    has_transcript_access,
+    row_to_transcript_list_item,
+)
 from .transcripts_schema import (
     TranscriptAccessResponse,
     TranscriptDetailResponse,
@@ -62,15 +67,25 @@ def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
             query = query.filter(Transcript.geographies.overlap(filters.geographies))
         if filters.topic:
             query = query.filter(Transcript.topic.ilike(f"%{filters.topic}%"))
+
+        search_rank = None
         if filters.search:
-            term = f"%{filters.search}%"
+            # Ranked full-text match (topic/preview/designation/domains/
+            # geographies - expert_name is deliberately not searched) or'd
+            # with trigram similarity on topic so typos still surface a result.
+            search_vector = build_transcript_search_vector()
+            search_query = func.plainto_tsquery(literal_column("'english'"), filters.search)
+            topic_similarity = func.similarity(Transcript.topic, filters.search)
+
             query = query.filter(
                 or_(
-                    Transcript.topic.ilike(term),
-                    Transcript.preview.ilike(term),
-                    cast(Transcript.domains, String).ilike(term),
-                    cast(Transcript.geographies, String).ilike(term),
+                    search_vector.op("@@")(search_query),
+                    topic_similarity > 0.3,
                 )
+            )
+            search_rank = func.greatest(
+                func.ts_rank_cd(search_vector, search_query),
+                func.coalesce(topic_similarity, 0.0),
             )
         if filters.expertId is not None:
             query = query.filter(Transcript.fk_expert == filters.expertId)
@@ -80,7 +95,11 @@ def handle_filter_transcripts(filters: TranscriptFilterRequest) -> Page:
             query = query.filter(Transcript.price <= filters.maxPrice)
         if filters.publishedAfter is not None:
             query = query.filter(Transcript.published_at >= filters.publishedAfter)
-        query = query.order_by(Transcript.published_at.desc())
+
+        if search_rank is not None:
+            query = query.order_by(desc(search_rank), Transcript.published_at.desc())
+        else:
+            query = query.order_by(Transcript.published_at.desc())
 
         params = PaginationParams(page=filters.page, limit=filters.limit)
         rows, total = paginate(query, params)
@@ -218,13 +237,13 @@ def handle_get_similar_transcripts(transcript_id: uuid.UUID, limit: int = 3) -> 
             domain_match = literal(0)
 
         if source_preview:
-            # regconfig args passed as literal SQL, not bound params - Postgres
-            # only auto-casts an untyped literal to regconfig, not a bound text
-            # param, so binding "english" here would raise at query time.
-            english = literal_column("'english'")
+            # transcript_preview_tsvector (migration df3b7e404367) is a DB-side
+            # function backed by a GIN index - matching it here (instead of
+            # inlining to_tsvector) means this scan reuses that index instead
+            # of recomputing a tsvector for every active row on every call.
             preview_rank = func.ts_rank_cd(
-                func.to_tsvector(english, func.coalesce(Transcript.preview, "")),
-                func.plainto_tsquery(english, source_preview),
+                func.transcript_preview_tsvector(Transcript.preview),
+                func.plainto_tsquery(literal_column("'english'"), source_preview),
             )
         else:
             preview_rank = literal(0.0)

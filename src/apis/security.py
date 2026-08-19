@@ -7,6 +7,11 @@ from jose import JWTError, jwt
 from config import get_settings
 
 JWT_ALGORITHM = "HS256"
+# Scopes what a trusted-secret token (e.g. future Infollion SSO) is allowed to
+# assert here - without this, a leak of a *partner's* signing secret would be
+# just as good as leaking this service's own, since any correctly-signed
+# token would otherwise be accepted regardless of which secret validated it.
+JWT_AUDIENCE = "syndicate-transcript-backend"
 PENDING_VERIFICATION_PURPOSE = "email_verification"
 PENDING_VERIFICATION_EXPIRY_MINUTES = 15
 OTP_LOGIN_PURPOSE = "otp_login"
@@ -30,6 +35,7 @@ def create_access_token(*, user_id: uuid.UUID, user_name: str, email: str) -> st
         "user_id": str(user_id),
         "user_name": user_name,
         "email": email,
+        "aud": JWT_AUDIENCE,
         "iat": now,
         "exp": now + timedelta(minutes=settings.auth.access_token_expiry_minutes),
     }
@@ -37,12 +43,15 @@ def create_access_token(*, user_id: uuid.UUID, user_name: str, email: str) -> st
 
 
 def decode_access_token(token: str) -> dict | None:
-    # Tries this service's own secret, then any trusted secrets (e.g. Infollion SSO).
+    # Tries this service's own secret, then any trusted secrets (e.g. Infollion
+    # SSO). The audience check applies to every secret tried, including our
+    # own, so a trusted-secret token has to have been deliberately minted for
+    # this service rather than merely signed with a valid key.
     settings = get_settings()
     secrets_to_try = [settings.auth.jwt_secret, *settings.auth.trusted_jwt_secrets]
     for secret in secrets_to_try:
         try:
-            return jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
+            return jwt.decode(token, secret, algorithms=[JWT_ALGORITHM], audience=JWT_AUDIENCE)
         except JWTError:
             continue
     return None

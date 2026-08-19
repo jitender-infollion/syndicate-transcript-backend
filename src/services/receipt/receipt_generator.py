@@ -10,7 +10,7 @@ _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _jinja_env = Environment(loader=FileSystemLoader(_TEMPLATES_DIR), autoescape=select_autoescape(["html"]))
 
 _COMPANY_NAME = "Infollion Research Services"
-_COMPANY_TAGLINE = "On-demand experts"
+_COMPANY_TAGLINE = "On-Demand Experts"
 _COMPANY_ADDRESS_LINES = ["5th Floor, UNITECH CYBER PARK, Durga Colony, Sector 39", "Gurugram, Haryana 122003"]
 _COMPANY_PHONE = "0124 440 6555"
 # Same logo already used in the invoice email template, for consistent branding.
