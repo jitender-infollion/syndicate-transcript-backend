@@ -58,7 +58,9 @@ class TranscriptFilterRequest(BaseModel):
     )
     geographies: list[str] | None = None
     topic: str | None = None
-    search: str | None = None  # free-text across topic/preview/domains/geographies
+    # Ranked full-text + typo-tolerant search across topic/preview/designation/
+    # domains/geographies. Does not match on expert_name (see build_transcript_search_vector).
+    search: str | None = None
     expertId: int | None = None  # fk_expert (external expert-management id) - intentionally not a UUID
     minPrice: int | None = None
     maxPrice: int | None = None

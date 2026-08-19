@@ -8,6 +8,7 @@ from apis.controllers.cart.cart_schema import AddCartItemRequest, MergeCartReque
 from apis.dependencies import get_current_user_id, get_current_user_id_optional
 from config import get_settings
 from utils.cookies import GUEST_CART_COOKIE_NAME, clear_guest_cart_cookie, set_guest_cart_cookie
+from utils.csrf import verify_same_origin
 from utils.response import success_response
 
 from .paths import P
@@ -39,6 +40,7 @@ def add_cart_item(
     response: Response,
     user_id: uuid.UUID | None = Depends(get_current_user_id_optional),
 ):
+    verify_same_origin(request)
     guest_id = None if user_id else _resolve_guest_id(request, response)
     result = cart_controller.add_item(user_id, guest_id, body.transcriptId)
     return success_response(data=result)
@@ -51,6 +53,7 @@ def remove_cart_item(
     response: Response,
     user_id: uuid.UUID | None = Depends(get_current_user_id_optional),
 ):
+    verify_same_origin(request)
     guest_id = None if user_id else _resolve_guest_id(request, response)
     result = cart_controller.remove_item(user_id, guest_id, transcript_id)
     return success_response(data=result)
@@ -58,6 +61,7 @@ def remove_cart_item(
 
 @router.delete(P.cart.ROOT)
 def clear_cart(request: Request, response: Response, user_id: uuid.UUID | None = Depends(get_current_user_id_optional)):
+    verify_same_origin(request)
     guest_id = None if user_id else _resolve_guest_id(request, response)
     result = cart_controller.clear_cart(user_id, guest_id)
     return success_response(data=result)
@@ -70,6 +74,7 @@ def merge_cart(
     response: Response,
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    verify_same_origin(request)
     guest_id = request.cookies.get(GUEST_CART_COOKIE_NAME)  # read-only, never created here
     result = cart_controller.merge_cart(user_id, guest_id, body.items)
     if guest_id:

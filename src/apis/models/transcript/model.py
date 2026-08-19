@@ -28,7 +28,7 @@ class Transcript(Base):
     key_insights = Column(ARRAY(String), nullable=True)
     published_at = Column(DateTime, server_default=text("now()"), nullable=True)
     price = Column(BigInteger, nullable=False)
-    currency = Column(String, nullable=False, default="INR", server_default=text("'INR'"))
+    currency = Column(String, nullable=False, default="USD", server_default=text("'USD'"))
     is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     updated_at = Column(DateTime, nullable=True)
 

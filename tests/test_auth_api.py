@@ -9,7 +9,7 @@ from sqlalchemy import text
 _ORIGIN_HEADERS = {"Origin": "http://localhost:5173"}
 
 
-def _signup(client, monkeypatch, email="jane@example.com", password="s3cret123", name="Jane Doe"):
+def _signup(client, monkeypatch, email="jane@example.com", password="s3cret1234", name="Jane Doe"):
     captured = {}
 
     def fake_send_otp(to_email, otp):
@@ -26,7 +26,7 @@ def _signup(client, monkeypatch, email="jane@example.com", password="s3cret123",
     return body["data"]["tempToken"], captured["otp"]
 
 
-def _signup_and_verify(client, monkeypatch, email="jane@example.com", password="s3cret123", name="Jane Doe"):
+def _signup_and_verify(client, monkeypatch, email="jane@example.com", password="s3cret1234", name="Jane Doe"):
     pending_token, otp = _signup(client, monkeypatch, email=email, password=password, name=name)
     return client.post("/api/auth/register/verify-otp", json={"tempToken": pending_token, "otp": otp})
 
@@ -43,7 +43,7 @@ def test_docs_are_disabled_by_default(client):
 def test_register_stores_account_before_verification(client, monkeypatch):
     resp = client.post(
         "/api/auth/register",
-        json={"name": "Jane Doe", "email": "jane@example.com", "password": "s3cret123", "companyName": "Acme"},
+        json={"name": "Jane Doe", "email": "jane@example.com", "password": "s3cret1234", "companyName": "Acme"},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -51,7 +51,7 @@ def test_register_stores_account_before_verification(client, monkeypatch):
     assert body["data"]["tempToken"]
 
     # Not verified yet, so login must be rejected even with the correct password.
-    resp = client.post("/api/auth/login", json={"email": "jane@example.com", "password": "s3cret123"})
+    resp = client.post("/api/auth/login", json={"email": "jane@example.com", "password": "s3cret1234"})
     assert resp.status_code == 403
     assert resp.json()["data"]["tempToken"]
 
@@ -67,7 +67,7 @@ def test_register_is_rate_limited_by_ip(client):
             json={
                 "name": "Rate Limit",
                 "email": f"ratelimit{i}@example.com",
-                "password": "s3cret123",
+                "password": "s3cret1234",
                 "companyName": "Acme",
             },
         )
@@ -75,7 +75,7 @@ def test_register_is_rate_limited_by_ip(client):
 
     resp = client.post(
         "/api/auth/register",
-        json={"name": "One Too Many", "email": "onetoomany@example.com", "password": "s3cret123", "companyName": "Acme"},
+        json={"name": "One Too Many", "email": "onetoomany@example.com", "password": "s3cret1234", "companyName": "Acme"},
     )
     assert resp.status_code == 429, resp.text
 
@@ -139,15 +139,15 @@ def test_verify_otp_with_invalid_pending_token_fails(client):
 
 
 def test_login_succeeds_after_verification(client, monkeypatch):
-    _signup_and_verify(client, monkeypatch, email="login@example.com", password="s3cret123")
+    _signup_and_verify(client, monkeypatch, email="login@example.com", password="s3cret1234")
 
-    resp = client.post("/api/auth/login", json={"email": "login@example.com", "password": "s3cret123"})
+    resp = client.post("/api/auth/login", json={"email": "login@example.com", "password": "s3cret1234"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["data"]["token"]
 
 
 def test_login_with_wrong_password_fails(client, monkeypatch):
-    _signup_and_verify(client, monkeypatch, email="wrongpw@example.com", password="s3cret123")
+    _signup_and_verify(client, monkeypatch, email="wrongpw@example.com", password="s3cret1234")
 
     resp = client.post("/api/auth/login", json={"email": "wrongpw@example.com", "password": "nope"})
     assert resp.status_code == 401
@@ -159,7 +159,7 @@ def test_login_with_unknown_email_fails(client):
 
 
 def test_login_otp_send_and_verify_succeeds(client, monkeypatch):
-    _signup_and_verify(client, monkeypatch, email="otplogin@example.com", password="s3cret123")
+    _signup_and_verify(client, monkeypatch, email="otplogin@example.com", password="s3cret1234")
 
     captured = {}
     monkeypatch.setattr(
@@ -192,7 +192,7 @@ def test_login_otp_send_for_unknown_email_fails(client):
 
 
 def test_login_otp_verify_with_wrong_code_fails(client, monkeypatch):
-    _signup_and_verify(client, monkeypatch, email="otpwrong@example.com", password="s3cret123")
+    _signup_and_verify(client, monkeypatch, email="otpwrong@example.com", password="s3cret1234")
     monkeypatch.setattr("apis.controllers.auth.auth_handler.send_login_otp", lambda to_email, otp: None)
 
     resp = client.post("/api/auth/login/otp/send", json={"email": "otpwrong@example.com"})
@@ -255,7 +255,7 @@ def test_login_otp_send_is_rate_limited_after_max_attempts(client, monkeypatch, 
 
     from apis.controllers.auth.auth_handler import RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS, LOGIN_OTP_EXPIRY_MINUTES
 
-    _signup_and_verify(client, monkeypatch, email="loginratelimit@example.com", password="s3cret123")
+    _signup_and_verify(client, monkeypatch, email="loginratelimit@example.com", password="s3cret1234")
     _max_out_otp(
         engine,
         "loginratelimit@example.com",
@@ -277,7 +277,7 @@ def test_login_otp_send_allowed_again_after_cooldown_expires(client, monkeypatch
         LOGIN_OTP_EXPIRY_MINUTES,
     )
 
-    _signup_and_verify(client, monkeypatch, email="logincooldownover@example.com", password="s3cret123")
+    _signup_and_verify(client, monkeypatch, email="logincooldownover@example.com", password="s3cret1234")
     monkeypatch.setattr("apis.controllers.auth.auth_handler.send_login_otp", lambda to_email, otp: None)
     long_ago = datetime.now(timezone.utc) - timedelta(minutes=RATE_LIMIT_LOGIN_OTP_COOLDOWN_MINUTES + 1)
     _max_out_otp(engine, "logincooldownover@example.com", LOGIN_OTP_EXPIRY_MINUTES, RATE_LIMIT_LOGIN_OTP_MAX_ATTEMPTS, long_ago)
@@ -310,10 +310,10 @@ def test_registration_otp_resend_is_rate_limited_after_max_attempts(client, monk
 def test_login_blocked_then_resend_otp_then_verify_flow(client, monkeypatch):
     # Sign up but never verify - simulates the OTP window lapsing, and the
     # user closing the tab before completing verification.
-    _signup(client, monkeypatch, email="lapsed@example.com", password="s3cret123", name="Lapsed User")
+    _signup(client, monkeypatch, email="lapsed@example.com", password="s3cret1234", name="Lapsed User")
 
     login_resp = client.post(
-        "/api/auth/login", json={"email": "lapsed@example.com", "password": "s3cret123"}
+        "/api/auth/login", json={"email": "lapsed@example.com", "password": "s3cret1234"}
     )
     assert login_resp.status_code == 403
     pending_token = login_resp.json()["data"]["tempToken"]
@@ -341,7 +341,7 @@ def test_login_blocked_then_resend_otp_then_verify_flow(client, monkeypatch):
     assert resp.status_code == 200, resp.text
     assert resp.json()["data"]["token"]
 
-    resp = client.post("/api/auth/login", json={"email": "lapsed@example.com", "password": "s3cret123"})
+    resp = client.post("/api/auth/login", json={"email": "lapsed@example.com", "password": "s3cret1234"})
     assert resp.status_code == 200
 
 
@@ -351,7 +351,7 @@ def test_resend_otp_with_invalid_pending_token_fails(client):
 
 
 def test_resend_otp_for_already_verified_account_fails(client, monkeypatch):
-    pending_token, otp = _signup(client, monkeypatch, email="alreadyverified@example.com", password="s3cret123")
+    pending_token, otp = _signup(client, monkeypatch, email="alreadyverified@example.com", password="s3cret1234")
     client.post("/api/auth/register/verify-otp", json={"tempToken": pending_token, "otp": otp})
 
     resp = client.post("/api/auth/register/resend-otp", json={"tempToken": pending_token})

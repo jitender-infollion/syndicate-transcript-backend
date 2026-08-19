@@ -39,6 +39,18 @@ class ServicesConfig:
     cors_origins: list
     frontend_base_url: str
     enable_docs: bool = False  # exposes the full API surface with no auth of its own
+    # True in every real deployment (behind Render's proxy) - only disable if
+    # this app ever receives connections directly from the internet, where
+    # trusting a client-supplied header would make IP-based rate limits spoofable.
+    trust_proxy_headers: bool = True
+    # Defaults to "production" deliberately - a deployment that forgets to set
+    # this should get the safe behavior (no OTPs/reset links in logs), not the
+    # dev-convenience one. Set to "development" explicitly in local .env files.
+    environment: str = "production"
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
 
 
 @dataclass
@@ -115,6 +127,8 @@ class Settings:
                 cors_origins=cors_origins,
                 frontend_base_url=get_env("FRONTEND_BASE_URL"),
                 enable_docs=get_bool_env("ENABLE_DOCS", default=False),
+                trust_proxy_headers=get_bool_env("TRUST_PROXY_HEADERS", default=True),
+                environment=get_env("ENVIRONMENT", default="production", required=False).lower(),
             ),
             email=EmailConfig(
                 sendgrid_api_key=get_env("SENDGRID_API_KEY", default="", required=False),

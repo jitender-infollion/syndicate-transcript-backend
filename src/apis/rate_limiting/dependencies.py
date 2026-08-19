@@ -70,6 +70,21 @@ def rate_limit_login(request: Request) -> None:
         RateLimits.auth.LOGIN_IP.check(f"login:{ip_address}")
 
 
+def rate_limit_register_otp_verify(request: Request) -> None:
+    # DB-tracked otp_retry_count already caps guesses per-account (see
+    # verify_otp); this is a coarser per-IP cap on top, so one IP can't fan
+    # out guesses across many different pending registrations at once.
+    ip_address = get_ip_address(request)
+    if ip_address:
+        RateLimits.auth.OTP_VERIFY_IP.check(f"otp_verify:register:{ip_address}")
+
+
+def rate_limit_login_otp_verify(request: Request) -> None:
+    ip_address = get_ip_address(request)
+    if ip_address:
+        RateLimits.auth.OTP_VERIFY_IP.check(f"otp_verify:login:{ip_address}")
+
+
 def rate_limit_login_otp_send(request: Request, data: LoginOtpSendRequest) -> None:
     ip_address = get_ip_address(request)
     if ip_address:

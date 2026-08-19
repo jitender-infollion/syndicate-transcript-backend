@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from apis.middlewares.jwt import jwt_middleware
+from apis.middlewares.security_headers import security_headers_middleware
 from apis.routes import api_router
 from config import get_settings
 from logging_config import setup_logging
@@ -30,13 +31,18 @@ app = FastAPI(
 )
 
 app.add_middleware(BaseHTTPMiddleware, dispatch=jwt_middleware)
+app.add_middleware(BaseHTTPMiddleware, dispatch=security_headers_middleware)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().services.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Narrowed to what the frontend actually sends/uses - no route here
+    # accepts PUT/PATCH, and no browser request needs a header beyond these
+    # two (the webhook's X-Razorpay-* headers are server-to-server, not
+    # subject to CORS at all).
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Outermost: assign/propagate X-Request-ID so every log line carries the correlation id.
@@ -60,3 +66,13 @@ async def validation_exception_handler(request, exc):
     errors = exc.errors()
     message = errors[0]["msg"] if errors else "Validation error"
     return JSONResponse(status_code=422, content=error_response(message))
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request, exc):
+    # Safety net only - every handler already catches its own exceptions and
+    # raises a generic HTTPException(500); this exists so a future handler
+    # that forgets to would still return a clean response instead of leaking
+    # an internal stack trace.
+    logger.exception("Unhandled exception")
+    return JSONResponse(status_code=500, content=error_response("Internal error"))

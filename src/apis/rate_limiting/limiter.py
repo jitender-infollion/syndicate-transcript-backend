@@ -75,6 +75,11 @@ class RateLimits:
         OTP_IP_HOURLY = RateLimitPolicy(max_attempts=75, window_seconds=3600)
         OTP_RESEND_COOLDOWN = RateLimitPolicy(max_attempts=1, window_seconds=45)
 
+        # OTP-verify endpoints don't touch issue_otp's own DB-tracked guess
+        # limiter until a valid tempToken/user is resolved, so they get their
+        # own coarse per-IP cap here too - see routes/auth.py.
+        OTP_VERIFY_IP = RateLimitPolicy(max_attempts=30, window_seconds=600)
+
     class orders:
         # Keyed by user_id - create_order requires auth and each call hits Razorpay.
         CREATE_ORDER = RateLimitPolicy(max_attempts=20, window_seconds=600)
@@ -86,9 +91,9 @@ class RateLimits:
 
     class transcripts:
         # Public browse endpoints (list/filter/domains/detail) share one IP bucket.
-        PUBLIC_IP = RateLimitPolicy(max_attempts=20, window_seconds=60)
+        PUBLIC_IP = RateLimitPolicy(max_attempts=50, window_seconds=60)
 
     class general:
         # Broad catch-alls applied in jwt_middleware, on top of any specific policy above.
-        PUBLIC_IP = RateLimitPolicy(max_attempts=20, window_seconds=60)
-        AUTHENTICATED_USER = RateLimitPolicy(max_attempts=20, window_seconds=60)
+        PUBLIC_IP = RateLimitPolicy(max_attempts=50, window_seconds=60)
+        AUTHENTICATED_USER = RateLimitPolicy(max_attempts=50, window_seconds=60)

@@ -41,9 +41,21 @@ def _send_email(
     attachment_bytes: bytes | None = None,
     attachment_filename: str | None = None,
 ) -> None:
-    email_config = get_settings().email
+    settings = get_settings()
+    email_config = settings.email
     if not email_config.is_configured:
-        logger.warning("SendGrid is not configured; logging email instead of sending. To: %s | %s", to_email, body)
+        if settings.services.is_production:
+            # Never log OTP codes or password-reset links in production - if
+            # SendGrid is misconfigured there, fail quietly rather than
+            # writing live credentials to logs.
+            logger.error("SendGrid is not configured; email not sent. To: %s", to_email)
+        else:
+            logger.warning(
+                "SendGrid is not configured; logging email instead of sending (non-production only). "
+                "To: %s | %s",
+                to_email,
+                body,
+            )
         return
 
     content = [{"type": "text/plain", "value": body}]
