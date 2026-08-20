@@ -93,6 +93,34 @@ class PaymentConfig:
 
 
 @dataclass
+class StorageConfig:
+    # Linode Object Storage (S3-compatible) — the SAME bucket/credentials as the
+    # Infollion backend, so transcript files uploaded there (private, under
+    # infollion-v2/) can be read here. Used read-only: we only mint short-lived
+    # presigned GET URLs (get_object); never upload/delete.
+    access_key: str
+    secret_key: str
+    region: str
+    bucket: str
+    endpoint: str
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.access_key and self.secret_key and self.bucket and self.endpoint)
+
+
+@dataclass
+class IngestConfig:
+    # Shared secret for the Infollion backend's server-to-server transcript ingest
+    # (POST/PATCH /api/internal/transcripts). Must match Infollion's SYNDICATE_SERVICE_API_KEY.
+    api_key: str
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
+
+
+@dataclass
 class Settings:
     database: DatabaseConfig
     auth: AuthConfig
@@ -101,6 +129,8 @@ class Settings:
     secrets: SecretsConfig
     signing_service: SigningServiceConfig
     payment: PaymentConfig
+    ingest: IngestConfig
+    storage: StorageConfig
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -148,6 +178,16 @@ class Settings:
                 razorpay_key_secret=get_env("RAZORPAY_KEY_SECRET", default="", required=False),
                 razorpay_webhook_secret=get_env("RAZORPAY_WEBHOOK_SECRET", default="", required=False),
                 currency=get_env("PAYMENT_CURRENCY", default="USD", required=False),
+            ),
+            ingest=IngestConfig(
+                api_key=get_env("SYNDICATE_INBOUND_API_KEY", default="", required=False),
+            ),
+            storage=StorageConfig(
+                access_key=get_env("LINODE_ACCESS_KEY", default="", required=False),
+                secret_key=get_env("LINODE_SECRET_KEY", default="", required=False),
+                region=get_env("LINODE_REGION", default="", required=False),
+                bucket=get_env("LINODE_BUCKET", default="", required=False),
+                endpoint=get_env("LINODE_ENDPOINT", default="", required=False),
             ),
         )
 

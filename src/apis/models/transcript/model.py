@@ -16,6 +16,9 @@ class Transcript(Base):
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    # Infollion syndicate_sessions.id. Idempotency key: publish upserts on it
+    # (see uq_transcripts_fk_session). Nullable for rows that predate the integration.
+    fk_session = Column(BigInteger, nullable=True, unique=True)
     fk_expert = Column(BigInteger, nullable=False, index=True)  # external id from the expert-management backend, no local FK
     expert_name = Column(String, nullable=True)  # snapshot of expert name at time of publishing
     designation = Column(String, nullable=True)  # snapshot of expert designation at time of publishing
