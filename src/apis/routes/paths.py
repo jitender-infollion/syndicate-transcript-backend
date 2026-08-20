@@ -5,6 +5,7 @@ _CART = "/api/cart"
 _ORDERS = "/api/orders"
 _SUPPORT = "/api/support"
 _TOPICS = "/api/topics"
+_INTERNAL_TRANSCRIPTS = "/api/internal/transcripts"  # server-to-server ingest (x-api-key)
 
 
 class P:
@@ -64,3 +65,9 @@ class P:
         BASE = _TOPICS
         REQUEST = "/request"
         MY_REQUESTS = "/my-requests"
+
+    # Internal server-to-server ingest from the Infollion backend (x-api-key auth).
+    class transcript_ingest:
+        BASE = _INTERNAL_TRANSCRIPTS
+        PUBLISH = ""  # POST  /api/internal/transcripts
+        DETAIL = "/{transcript_id}"  # PATCH /api/internal/transcripts/{id}

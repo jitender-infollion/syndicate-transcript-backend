@@ -283,7 +283,7 @@ def handle_get_transcript_access(
         if not transcript.final_transcript:
             raise HTTPException(status_code=404, detail="No file available for this transcript.")
 
-        if not get_settings().signing_service.is_configured:
+        if not get_settings().storage.is_configured:
             raise HTTPException(status_code=503, detail="Transcript view is not available right now.")
 
         url = get_signed_url(transcript_id, transcript.final_transcript)
@@ -363,7 +363,7 @@ def handle_download_transcript(user_id: uuid.UUID, transcript_id: uuid.UUID) -> 
         if not has_transcript_access(session, user_id, transcript_id):
             raise HTTPException(status_code=403, detail="You do not have access to this transcript.")
 
-        if get_settings().signing_service.is_configured and transcript.final_transcript:
+        if get_settings().storage.is_configured and transcript.final_transcript:
             url = get_signed_url(transcript_id, transcript.final_transcript)
             return DownloadResult(redirect_url=url)
 

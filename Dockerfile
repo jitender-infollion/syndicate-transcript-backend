@@ -30,6 +30,10 @@ COPY requirements.lock.txt .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system --require-hashes -r requirements.lock.txt
 
+# Cache-bust: everything above (apt, uv install) stays cached; passing a changing
+# --build-arg CACHEBUST (see Makefile) invalidates from here down so `src` is always
+# re-copied fresh. Fixes stale-code images from Docker's COPY cache not detecting changes.
+ARG CACHEBUST=0
 COPY --chown=1001:1001 src ./src
 COPY --chown=1001:1001 entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh

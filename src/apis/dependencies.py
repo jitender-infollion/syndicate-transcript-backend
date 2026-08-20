@@ -1,11 +1,23 @@
+import hmac
 import uuid
 
-from fastapi import HTTPException, Request
+from fastapi import Header, HTTPException, Request
 
 from apis.controllers.orders.orders_controller import OrdersController
 from apis.controllers.orders.orders_handler import OrdersHandler
 from config import get_settings
 from services.payment import RazorpayService
+
+
+def verify_ingest_api_key(x_api_key: str = Header(default="", alias="x-api-key")) -> None:
+    """Server-to-server auth for the Infollion transcript-ingest endpoints.
+
+    Compares the `x-api-key` header against SYNDICATE_INBOUND_API_KEY in constant time.
+    Fails closed: if the secret is unset, every request is rejected.
+    """
+    expected = get_settings().ingest.api_key
+    if not expected or not hmac.compare_digest(x_api_key, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def get_current_user_id(request: Request) -> uuid.UUID:

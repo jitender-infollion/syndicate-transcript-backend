@@ -25,6 +25,11 @@ PUBLIC_TRANSCRIPT_SUBPATH_RE = re.compile(r"^/api/transcripts/[^/]+/similar$")
 
 WEBHOOK_PATH_RE = re.compile(r"^/api/orders/webhook/[^/]+$")  # verified via gateway signature instead
 
+# Server-to-server transcript ingest from the Infollion backend - authenticated by a
+# shared x-api-key at the route level (see apis/dependencies.verify_ingest_api_key),
+# so it bypasses the JWT gate. Treated like webhooks: exempt from IP rate-limiting too.
+INGEST_PATH_RE = re.compile(r"^/api/internal/transcripts(/[^/]+)?$")
+
 # Bearer token decoded if present, but not required. /api/cart/merge excluded.
 SOFT_AUTH_PATHS = {"/api/cart", "/api/support", "/api/topics/request"}
 SOFT_AUTH_PATH_RE = re.compile(r"^/api/cart/items(/[^/]+)?$")
@@ -68,8 +73,9 @@ async def jwt_middleware(request: Request, call_next):
         or PUBLIC_PATH_RE.match(path)
         or PUBLIC_TRANSCRIPT_SUBPATH_RE.match(path)
         or WEBHOOK_PATH_RE.match(path)
+        or INGEST_PATH_RE.match(path)
     ):
-        if not WEBHOOK_PATH_RE.match(path):
+        if not (WEBHOOK_PATH_RE.match(path) or INGEST_PATH_RE.match(path)):
             ip_address = get_ip_address(request)
             if ip_address:
                 blocked = _rate_limit_response(RateLimits.general.PUBLIC_IP, f"public:{ip_address}")
