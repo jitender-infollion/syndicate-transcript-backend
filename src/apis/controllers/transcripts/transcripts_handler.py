@@ -1,7 +1,5 @@
 import logging
 import uuid
-from dataclasses import dataclass
-from typing import Literal
 
 from fastapi import HTTPException
 from sqlalchemy import case, desc, func, literal, literal_column, or_
@@ -10,8 +8,7 @@ from apis.models.order import Order, OrderItem, OrderStatus
 from apis.models.transcript import Transcript, TranscriptFilterBounds
 from config import get_settings
 from services.database.postgres.connection import get_session
-from services.storage.signing_client import get_signed_url
-from services.transcript_pdf import generate_transcript_pdf
+from services.storage.signing_client import get_object_bytes
 from utils.pagination import Page, PaginationParams, build_page, paginate
 
 from .transcripts_helper import (
@@ -21,11 +18,9 @@ from .transcripts_helper import (
     row_to_transcript_list_item,
 )
 from .transcripts_schema import (
-    TranscriptAccessResponse,
     TranscriptDetailResponse,
     TranscriptFilterBoundsResponse,
     TranscriptFilterRequest,
-    TranscriptFullTextResponse,
     TranscriptListItem,
 )
 
@@ -264,9 +259,14 @@ def handle_get_similar_transcripts(transcript_id: uuid.UUID, limit: int = 3) -> 
         session.close()
 
 
-def handle_get_transcript_access(
-    user_id: uuid.UUID, transcript_id: uuid.UUID, mode: Literal["view", "download"]
-) -> TranscriptAccessResponse:
+def handle_get_transcript_file(user_id: uuid.UUID, transcript_id: uuid.UUID) -> bytes:
+    """Load a purchased transcript's actual PDF bytes from storage.
+
+    Access-gated (must be a PAID order for this user) and proxied through this
+    service: the bytes are fetched from the storage bucket server-side and streamed
+    back, so the browser never talks to the bucket directly. The same bytes back
+    both the inline viewer (/view) and the download (/download).
+    """
     session = get_session()
     try:
         transcript = (
@@ -284,97 +284,15 @@ def handle_get_transcript_access(
             raise HTTPException(status_code=404, detail="No file available for this transcript.")
 
         if not get_settings().storage.is_configured:
-            raise HTTPException(status_code=503, detail="Transcript view is not available right now.")
+            raise HTTPException(status_code=503, detail="Transcript file is not available right now.")
 
-        url = get_signed_url(transcript_id, transcript.final_transcript)
-        return TranscriptAccessResponse(url=url)
+        body, _content_type = get_object_bytes(transcript_id, transcript.final_transcript)
+        return body
     except HTTPException:
         raise
     except Exception:
         session.rollback()
-        logger.exception("Failed to generate %s link for transcript", mode)
-        raise HTTPException(status_code=500, detail="Internal error") from None
-    finally:
-        session.close()
-
-
-def _build_dev_full_text(transcript: Transcript) -> str:
-    # No real extracted transcript body exists yet - assembled from preview/key_insight.
-    lines = [transcript.topic or "Untitled transcript", ""]
-    if transcript.preview:
-        lines.append(transcript.preview)
-        lines.append("")
-    if transcript.key_insights:
-        lines.append("Key insights covered:")
-        lines.extend(f"- {insight}" for insight in transcript.key_insights)
-        lines.append("")
-    lines.append(
-        "[Dev placeholder: this environment has no stored full transcript body yet - "
-        "the text above is assembled from the preview and key-insight fields. Replace "
-        "this with the real extracted transcript text before shipping.]"
-    )
-    return "\n".join(lines)
-
-
-def handle_get_full_text(user_id: uuid.UUID, transcript_id: uuid.UUID) -> TranscriptFullTextResponse:
-    session = get_session()
-    try:
-        transcript = (
-            session.query(Transcript)
-            .filter(Transcript.id == transcript_id, Transcript.is_active.is_(True))
-            .first()
-        )
-        if not transcript:
-            raise HTTPException(status_code=404, detail="Transcript not found")
-
-        if not has_transcript_access(session, user_id, transcript_id):
-            raise HTTPException(status_code=403, detail="You do not have access to this transcript.")
-
-        return TranscriptFullTextResponse(fullText=_build_dev_full_text(transcript))
-    except HTTPException:
-        raise
-    except Exception:
-        session.rollback()
-        logger.exception("Failed to build full text for transcript %s", transcript_id)
-        raise HTTPException(status_code=500, detail="Internal error") from None
-    finally:
-        session.close()
-
-
-@dataclass
-class DownloadResult:
-    # Exactly one is set. redirect_url: 307s straight to storage, no file bytes
-    # through this server - needs the bucket's CORS to allow the frontend origin.
-    redirect_url: str | None = None
-    pdf_bytes: bytes | None = None
-
-
-def handle_download_transcript(user_id: uuid.UUID, transcript_id: uuid.UUID) -> DownloadResult:
-    session = get_session()
-    try:
-        transcript = (
-            session.query(Transcript)
-            .filter(Transcript.id == transcript_id, Transcript.is_active.is_(True))
-            .first()
-        )
-        if not transcript:
-            raise HTTPException(status_code=404, detail="Transcript not found")
-
-        if not has_transcript_access(session, user_id, transcript_id):
-            raise HTTPException(status_code=403, detail="You do not have access to this transcript.")
-
-        if get_settings().storage.is_configured and transcript.final_transcript:
-            url = get_signed_url(transcript_id, transcript.final_transcript)
-            return DownloadResult(redirect_url=url)
-
-        # Dev fallback until the signing service is configured.
-        full_text = _build_dev_full_text(transcript)
-        return DownloadResult(pdf_bytes=generate_transcript_pdf(transcript, full_text))
-    except HTTPException:
-        raise
-    except Exception:
-        session.rollback()
-        logger.exception("Failed to generate download for transcript %s", transcript_id)
+        logger.exception("Failed to load file for transcript %s", transcript_id)
         raise HTTPException(status_code=500, detail="Internal error") from None
     finally:
         session.close()

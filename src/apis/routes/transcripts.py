@@ -1,7 +1,6 @@
 import uuid
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import RedirectResponse
 
 from apis.controllers.transcripts import transcripts_controller
 from apis.controllers.transcripts.transcripts_schema import TranscriptFilterRequest
@@ -64,21 +63,15 @@ def get_similar_transcripts(transcript_id: uuid.UUID, limit: int = 3):
     return success_response(data=result)
 
 
+# Streams the real PDF bytes inline (proxied from storage) so the frontend can
+# render it in-page. Bytes come through this API, so no storage-bucket CORS needed.
 @router.get(P.transcripts.VIEW)
 def view_transcript(transcript_id: uuid.UUID, user_id: uuid.UUID = Depends(get_current_user_id)):
-    result = transcripts_controller.get_transcript_access(user_id, transcript_id, mode="view")
-    return success_response(data=result)
+    pdf_bytes = transcripts_controller.get_transcript_file(user_id, transcript_id)
+    return pdf_response(pdf_bytes, f"transcript-{transcript_id}.pdf", disposition="inline")
 
 
 @router.get(P.transcripts.DOWNLOAD)
 def download_transcript(transcript_id: uuid.UUID, user_id: uuid.UUID = Depends(get_current_user_id)):
-    result = transcripts_controller.download_transcript(user_id, transcript_id)
-    if result.redirect_url:
-        return RedirectResponse(url=result.redirect_url, status_code=307)
-    return pdf_response(result.pdf_bytes, f"transcript-{transcript_id}.pdf", disposition="attachment")
-
-
-@router.get(P.transcripts.FULL_TEXT)
-def get_full_text(transcript_id: uuid.UUID, user_id: uuid.UUID = Depends(get_current_user_id)):
-    result = transcripts_controller.get_full_text(user_id, transcript_id)
-    return success_response(data=result)
+    pdf_bytes = transcripts_controller.get_transcript_file(user_id, transcript_id)
+    return pdf_response(pdf_bytes, f"transcript-{transcript_id}.pdf", disposition="attachment")

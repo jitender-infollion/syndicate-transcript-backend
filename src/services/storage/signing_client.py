@@ -98,3 +98,31 @@ def get_signed_url(transcript_id: uuid.UUID, final_transcript: dict) -> str:
     except (BotoCoreError, ClientError):
         logger.exception("Failed to presign transcript %s", transcript_id)
         raise HTTPException(status_code=502, detail="Failed to generate file access link.") from None
+
+
+def get_object_bytes(transcript_id: uuid.UUID, final_transcript: dict) -> tuple[bytes, str]:
+    """Fetch a transcript file's raw bytes from the shared Linode bucket.
+
+    Read-only get_object using the same bucket credentials. Returns the object
+    bytes and its content-type. We stream these back through this service (instead
+    of handing the browser a presigned URL) so the file stays behind our own
+    auth/CORS - the browser only ever talks to this API, never cross-origin to the
+    storage bucket, so no bucket-side CORS config is needed for view/download.
+    """
+    settings = get_settings().storage
+    if not settings.is_configured:
+        raise HTTPException(status_code=500, detail="Storage is not configured.")
+
+    key = _resolve_object_key((final_transcript or {}).get("url"))
+    if not key:
+        logger.error("Unresolvable or disallowed transcript object url for %s", transcript_id)
+        raise HTTPException(status_code=502, detail="Failed to load transcript file.")
+
+    try:
+        obj = _get_s3_client().get_object(Bucket=settings.bucket, Key=key)
+        body = obj["Body"].read()
+        content_type = obj.get("ContentType") or "application/pdf"
+        return body, content_type
+    except (BotoCoreError, ClientError):
+        logger.exception("Failed to fetch transcript object %s", transcript_id)
+        raise HTTPException(status_code=502, detail="Failed to load transcript file.") from None

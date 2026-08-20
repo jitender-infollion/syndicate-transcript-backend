@@ -6,7 +6,8 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from services.database.postgres.connection import Base
 
 
-# final_transcript is never served as-is - a fresh signed URL is minted per request.
+# final_transcript holds the stored file location ({"url", "type"}); the file itself
+# is never exposed directly - its bytes are fetched server-side and streamed per request.
 class Transcript(Base):
     __tablename__ = "transcripts"
     __table_args__ = (

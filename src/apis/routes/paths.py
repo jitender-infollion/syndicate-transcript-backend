@@ -40,7 +40,6 @@ class P:
         SIMILAR = "/{transcript_id}/similar"
         VIEW = "/{transcript_id}/view"
         DOWNLOAD = "/{transcript_id}/download"
-        FULL_TEXT = "/{transcript_id}/full-text"
 
     class cart:
         BASE = _CART
