@@ -32,14 +32,6 @@ class TranscriptDetailResponse(TranscriptListItem):
     pass
 
 
-class TranscriptAccessResponse(BaseModel):
-    url: str
-
-
-class TranscriptFullTextResponse(BaseModel):
-    fullText: str
-
-
 class TranscriptFilterBoundsResponse(BaseModel):
     minPrice: int | None
     maxPrice: int | None

@@ -3,13 +3,10 @@ import uuid
 from utils.pagination import PaginationParams
 
 from . import transcripts_handler as handler
-from .transcripts_handler import DownloadResult
 from .transcripts_schema import (
-    TranscriptAccessResponse,
     TranscriptDetailResponse,
     TranscriptFilterBoundsResponse,
     TranscriptFilterRequest,
-    TranscriptFullTextResponse,
     TranscriptListItem,
 )
 
@@ -42,13 +39,5 @@ def get_similar_transcripts(transcript_id: uuid.UUID, limit: int) -> list[Transc
     return handler.handle_get_similar_transcripts(transcript_id, limit)
 
 
-def get_transcript_access(user_id: uuid.UUID, transcript_id: uuid.UUID, mode: str) -> TranscriptAccessResponse:
-    return handler.handle_get_transcript_access(user_id, transcript_id, mode)
-
-
-def get_full_text(user_id: uuid.UUID, transcript_id: uuid.UUID) -> TranscriptFullTextResponse:
-    return handler.handle_get_full_text(user_id, transcript_id)
-
-
-def download_transcript(user_id: uuid.UUID, transcript_id: uuid.UUID) -> DownloadResult:
-    return handler.handle_download_transcript(user_id, transcript_id)
+def get_transcript_file(user_id: uuid.UUID, transcript_id: uuid.UUID) -> bytes:
+    return handler.handle_get_transcript_file(user_id, transcript_id)

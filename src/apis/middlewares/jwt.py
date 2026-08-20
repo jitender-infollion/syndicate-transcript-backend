@@ -19,8 +19,8 @@ from utils.response import error_response
 # Dynamic id - scoped to one segment so /me/purchased, /{id}/view|download stay protected.
 PUBLIC_PATH_RE = re.compile(r"^/api/transcripts/[^/]+$")
 
-# Also public, like the detail page itself - unlike /view|download|full-text,
-# there's no entitlement being checked here, just a read-only recommendation list.
+# Also public, like the detail page itself - unlike /view|download, there's no
+# entitlement being checked here, just a read-only recommendation list.
 PUBLIC_TRANSCRIPT_SUBPATH_RE = re.compile(r"^/api/transcripts/[^/]+/similar$")
 
 WEBHOOK_PATH_RE = re.compile(r"^/api/orders/webhook/[^/]+$")  # verified via gateway signature instead
