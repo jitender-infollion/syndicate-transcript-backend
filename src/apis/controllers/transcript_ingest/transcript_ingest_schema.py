@@ -17,6 +17,7 @@ class TranscriptPublishRequest(BaseModel):
     expert_name: str | None = None
     designation: str | None = None
     years_of_experience: int | None = None
+    about_expert: str | None = None
     topic: str | None = None
     domains: list[str] = Field(default_factory=list)
     geographies: list[str] = Field(default_factory=list)

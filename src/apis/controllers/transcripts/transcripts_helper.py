@@ -19,9 +19,9 @@ SLIM_TRANSCRIPT_COLUMNS = (
     Transcript.is_active,
     Transcript.published_at,
     Transcript.fk_expert,
-    Transcript.expert_name,
     Transcript.designation,
     Transcript.years_of_experience,
+    Transcript.about_expert,
 )
 
 
@@ -67,12 +67,15 @@ def row_to_transcript_list_item(row) -> TranscriptListItem:
         is_active,
         published_at,
         fk_expert,
-        expert_name,
         designation,
         years_of_experience,
+        about_expert,
     ) = row
     expert = ExpertSummary(
-        id=fk_expert, name=expert_name, designation=designation, yearsOfExperience=years_of_experience
+        id=fk_expert,
+        designation=designation,
+        yearsOfExperience=years_of_experience,
+        aboutExpert=about_expert,
     )
     return TranscriptListItem(
         id=transcript_id,

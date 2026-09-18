@@ -24,12 +24,13 @@ class Transcript(Base):
     expert_name = Column(String, nullable=True)  # snapshot of expert name at time of publishing
     designation = Column(String, nullable=True)  # snapshot of expert designation at time of publishing
     years_of_experience = Column(Integer, nullable=True)
+    about_expert = Column(Text, nullable=True)  # snapshot of expert bio at time of publishing
     topic = Column(String, nullable=True)
-    domains = Column(ARRAY(String), nullable=True)
+    domains = Column(ARRAY(String), nullable=False)
     geographies = Column(ARRAY(String), nullable=True)
-    preview = Column(Text, nullable=True)
+    preview = Column(Text, nullable=False)
     final_transcript = Column(JSONB, nullable=True)
-    key_insights = Column(ARRAY(String), nullable=True)
+    key_insights = Column(ARRAY(String), nullable=False)
     published_at = Column(DateTime, server_default=text("now()"), nullable=True)
     price = Column(BigInteger, nullable=False)
     currency = Column(String, nullable=False, default="USD", server_default=text("'USD'"))

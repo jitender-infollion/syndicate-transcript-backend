@@ -51,6 +51,10 @@ def build_transcript(seed_id: int) -> Transcript:
         expert_name=f"{random.choice(FIRST_NAMES)} {random.choice(LAST_NAMES)}",
         designation=random.choice(DESIGNATIONS),
         years_of_experience=random.randint(3, 20),
+        about_expert=(
+            f"{random.randint(3, 20)}+ years leading {domain[0].lower()} initiatives "
+            "across enterprise and mid-market organizations."
+        ),
         topic=topic,
         domains=domain,
         geographies=geography,

@@ -23,7 +23,7 @@ def test_add_item_to_guest_cart_then_fetch(client, engine):
     assert len(items) == 1
     assert items[0]["id"] == transcript_id
     assert items[0]["price"]
-    assert items[0]["author"] is not None
+    assert items[0]["expert"] is not None
 
 
 def test_add_same_item_twice_is_idempotent(client, engine):

@@ -28,6 +28,7 @@ def handle_publish_transcript(payload: TranscriptPublishRequest) -> uuid.UUID:
             "expert_name": payload.expert_name,
             "designation": payload.designation,
             "years_of_experience": payload.years_of_experience,
+            "about_expert": payload.about_expert,
             "topic": payload.topic,
             "domains": payload.domains,
             "geographies": payload.geographies,

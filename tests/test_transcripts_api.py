@@ -40,6 +40,7 @@ def _seed_transcript(
     geography: list[str] | None = None,
     topic: str | None = None,
     price: int = 49,
+    about_expert: str | None = "12+ years leading enterprise revenue teams.",
 ) -> int:
     if final_transcript is None:
         final_transcript = {"url": "s3://bucket/key.pdf", "filename": "transcript.pdf"}
@@ -55,11 +56,11 @@ def _seed_transcript(
             text(
                 """
                 INSERT INTO transcripts
-                    (fk_expert, expert_name, designation, years_of_experience, topic, domain, geography, preview,
-                     key_insight, final_transcript, price, published_at, approved_at, is_active)
+                    (fk_expert, expert_name, designation, years_of_experience, about_expert, topic, domains,
+                     geographies, preview, key_insights, final_transcript, price, published_at, is_active)
                 VALUES
-                    (:fk_expert, :expert_name, :designation, :years_of_experience, :topic, :domain, :geography,
-                     :preview, :key_insight, :final_transcript, :price, :published_at, :approved_at, true)
+                    (:fk_expert, :expert_name, :designation, :years_of_experience, :about_expert, :topic, :domains,
+                     :geographies, :preview, :key_insights, :final_transcript, :price, :published_at, true)
                 RETURNING id
                 """
             ),
@@ -68,15 +69,15 @@ def _seed_transcript(
                 "expert_name": "Sarah Mitchell",
                 "designation": "VP of Revenue Operations",
                 "years_of_experience": 12,
+                "about_expert": about_expert,
                 "topic": topic,
-                "domain": domain,
-                "geography": geography,
+                "domains": domain,
+                "geographies": geography,
                 "preview": "A short preview of the conversation.",
-                "key_insight": ["Budgets are shifting toward consumption pricing", "Vendor lock-in is the top concern"],
+                "key_insights": ["Budgets are shifting toward consumption pricing", "Vendor lock-in is the top concern"],
                 "final_transcript": json.dumps(final_transcript),
                 "price": price,
                 "published_at": datetime.now(timezone.utc),
-                "approved_at": datetime.now(timezone.utc),
             },
         )
         return result.scalar_one()
@@ -109,29 +110,37 @@ def test_list_transcripts_is_public(client):
     assert resp.status_code == 200, resp.text
 
 
-def test_domains_is_public(client):
+def test_domains_is_public(client, monkeypatch):
+    _mock_domains_api(monkeypatch, [{"name": "Fintech Payments"}])
+
     resp = client.get("/api/v1/transcripts/domains")
     assert resp.status_code == 200, resp.text
 
 
 def test_list_transcripts_includes_all_schema_fields(client, engine):
     author_id = _seed_author(engine)
-    transcript_id = _seed_transcript(
-        engine, author_id, final_transcript={"url": "s3://bucket/real.pdf", "filename": "real.pdf"}
-    )
+    transcript_id = _seed_transcript(engine, author_id, about_expert="12+ years in revenue operations.")
 
     resp = client.get("/api/v1/transcripts?limit=20")
     assert resp.status_code == 200, resp.text
     item = next(i for i in resp.json()["data"]["items"] if i["id"] == transcript_id)
 
     assert "isPurchased" not in item
-    assert item["finalTranscript"] == {"url": "s3://bucket/real.pdf", "filename": "real.pdf"}
-    assert item["keyInsight"]
+    # final_transcript's stored location is never exposed directly - only fetched
+    # server-side and streamed via /view and /download.
+    assert "finalTranscript" not in item
+    assert item["domains"] == ["Enterprise SaaS"]
+    assert item["geographies"] == ["North America"]
+    assert item["keyInsights"]
     assert item["isActive"] is True
     assert item["publishedAt"] is not None
-    assert item["approvedAt"] is not None
-    assert item["createdAt"] is not None
     assert item["price"] == 49
+    assert item["expert"] == {
+        "id": author_id,
+        "designation": "VP of Revenue Operations",
+        "yearsOfExperience": 12,
+        "aboutExpert": "12+ years in revenue operations.",
+    }
 
 
 def test_detail_is_public(client, engine):
@@ -141,8 +150,12 @@ def test_detail_is_public(client, engine):
     resp = client.get(f"/api/v1/transcripts/{transcript_id}")
     assert resp.status_code == 200, resp.text
     data = resp.json()["data"]
+    assert data["id"] == transcript_id
+    assert data["preview"] == "A short preview of the conversation."
     assert "isPurchased" not in data
-    assert data["finalTranscript"] == {"url": "s3://bucket/key.pdf", "filename": "transcript.pdf"}
+    # final_transcript's stored location is never exposed directly - only fetched
+    # server-side and streamed via /view and /download.
+    assert "finalTranscript" not in data
 
 
 def test_detail_with_invalid_token_still_works(client, engine):
@@ -229,28 +242,44 @@ def test_full_text_and_download_require_purchase(client, monkeypatch, engine):
     assert resp.status_code == 403
 
 
-def test_domain_filter_matches_via_array_containment(client, engine):
-    author_id = _seed_author(engine)
-    multi_domain_id = _seed_transcript(engine, author_id, domain=["Fintech Payments", "Cybersecurity Operations"])
-    _seed_transcript(engine, author_id, domain=["Retail Customer Experience"])
-
-    resp = client.get("/api/v1/transcripts?domain=Cybersecurity%20Operations")
-    assert resp.status_code == 200, resp.text
-    body = resp.json()["data"]
-    assert body["meta"]["total"] == 1
-    assert body["items"][0]["id"] == multi_domain_id
-    assert body["items"][0]["domain"] == ["Fintech Payments", "Cybersecurity Operations"]
+# GET /transcripts has no domain/geography filtering of its own - that only
+# exists on POST /transcripts/filter (see test_filter_by_domain_matches_via_array_overlap).
 
 
-def test_domains_endpoint_returns_flattened_distinct_list(client, engine):
-    author_id = _seed_author(engine)
-    _seed_transcript(engine, author_id, domain=["Fintech Payments", "Cybersecurity Operations"])
-    _seed_transcript(engine, author_id, domain=["Cybersecurity Operations", "Retail Customer Experience"])
+def _mock_domains_api(monkeypatch, entries: list[dict]) -> None:
+    # handle_list_domains proxies a real Infollion HTTP API, gated behind
+    # SYNDICATE_INBOUND_API_KEY - mock both so this doesn't depend on real
+    # external config/secrets.
+    monkeypatch.setenv("SYNDICATE_INBOUND_API_KEY", "test-key")
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": entries}
+
+    monkeypatch.setattr(
+        "apis.controllers.transcripts.transcripts_handler.httpx.get",
+        lambda *args, **kwargs: _FakeResponse(),
+    )
+
+
+def test_domains_endpoint_filters_placeholder_entries(client, monkeypatch):
+    _mock_domains_api(
+        monkeypatch,
+        [
+            {"name": "Fintech Payments"},
+            {"name": "To Be Added"},
+            {"name": "To Be Added L1"},
+            {"name": "Cybersecurity Operations"},
+        ],
+    )
 
     resp = client.get("/api/v1/transcripts/domains")
     assert resp.status_code == 200, resp.text
-    domains = resp.json()["data"]
-    assert domains == ["Cybersecurity Operations", "Fintech Payments", "Retail Customer Experience"]
+    names = [d["name"] for d in resp.json()["data"]]
+    assert names == ["Fintech Payments", "Cybersecurity Operations"]
 
 
 def test_my_purchased_only_returns_entitled_transcripts(client, monkeypatch, engine):
@@ -289,7 +318,7 @@ def test_filter_by_geography(client, engine):
     match_id = _seed_transcript(engine, author_id, geography=["Europe"])
     _seed_transcript(engine, author_id, geography=["South Asia"])
 
-    resp = client.post("/api/v1/transcripts/filter", json={"geography": ["Europe"]})
+    resp = client.post("/api/v1/transcripts/filter", json={"geographies": ["Europe"]})
     assert resp.status_code == 200, resp.text
     body = resp.json()["data"]
     assert body["meta"]["total"] == 1
@@ -357,13 +386,13 @@ def test_filter_by_multiple_disjoint_price_ranges_does_not_include_the_gap(clien
     assert returned_ids == {free_id, high_id}
 
 
-def test_filter_by_author_id(client, engine):
+def test_filter_by_expert_id(client, engine):
     author_a = _seed_author(engine)
     author_b = _seed_author(engine)
     match_id = _seed_transcript(engine, author_a)
     _seed_transcript(engine, author_b)
 
-    resp = client.post("/api/v1/transcripts/filter", json={"authorId": author_a})
+    resp = client.post("/api/v1/transcripts/filter", json={"expertId": author_a})
     assert resp.status_code == 200, resp.text
     body = resp.json()["data"]
     assert body["meta"]["total"] == 1
@@ -380,7 +409,7 @@ def test_filter_combines_multiple_criteria_and_paginates(client, engine):
 
     resp = client.post(
         "/api/v1/transcripts/filter",
-        json={"domain": ["Fintech Payments"], "geography": ["Europe"], "page": 1, "limit": 5},
+        json={"domain": ["Fintech Payments"], "geographies": ["Europe"], "page": 1, "limit": 5},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()["data"]

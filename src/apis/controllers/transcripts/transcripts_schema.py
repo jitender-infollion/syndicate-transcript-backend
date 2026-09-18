@@ -10,9 +10,9 @@ class ExpertSummary(BaseModel):
     # id is fk_expert - an id from the separate external expert-management system,
     # not a local UUID primary key. Intentionally left as int (see Transcript.fk_expert).
     id: int
-    name: str | None
     designation: str | None
     yearsOfExperience: int | None
+    aboutExpert: str | None
 
 
 class TranscriptListItem(BaseModel):
